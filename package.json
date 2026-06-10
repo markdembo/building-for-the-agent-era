@@ -25,5 +25,12 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "wrangler": "^4.99.0"
+  },
+  "dependencies": {
+    "agents": "^0.15.0",
+    "ai": "^6.0.199",
+    "isomorphic-git": "^1.38.4",
+    "workers-ai-provider": "^3.1.14",
+    "zod": "^4.4.3"
   }
 }

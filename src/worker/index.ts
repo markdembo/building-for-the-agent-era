@@ -3,6 +3,8 @@ import { handleSubmit } from "./submit";
 import { handleExtensionRoute } from "./extensions";
 import type { Env } from "./types";
 
+export { GenerationAgent } from "./agent";
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -39,8 +41,6 @@ export default {
     if (path === "/_health") {
       return new Response("ok", { status: 200 });
     }
-
-
 
     // Everything else — defer to Static Assets (the React UI / SPA fallback).
     return env.ASSETS.fetch(request);

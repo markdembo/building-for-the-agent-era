@@ -23,7 +23,8 @@
   },
   "vars": {
     "APP_ORIGIN": "https://vinyl.not-a-single-bug.com",
-    "LOADER_COMPAT_DATE": "2026-06-10"
+    "LOADER_COMPAT_DATE": "2026-06-10",
+    "ARTIFACTS_BASE": "https://22c98cbfd8d562c6939f5e839d3a1ea3.artifacts.cloudflare.net/git/vinyl-app"
   },
   "d1_databases": [
     {
@@ -46,5 +47,12 @@
     {
       "binding": "LOADER"
     }
-  ]
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "GENERATION_AGENT", "class_name": "GenerationAgent" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GenerationAgent"] }],
+  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }]
 }

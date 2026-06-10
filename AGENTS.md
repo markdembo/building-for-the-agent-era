@@ -518,15 +518,21 @@ decisions made.
 ### Generator
 
 - Prompt file: `src/prompts/extension-generator.md` (Text module).
-- Model (FIXED): `@cf/moonshotai/kimi-k2.6` via the AI SDK
-  `generateText({ model: workersai("@cf/moonshotai/kimi-k2.6"), tools,
-  stopWhen: stepCountIs(8) })`. The AI SDK drives the tool-use loop — no
-  hand-rolled `messages`/`tool_calls` loop. Tools (`test_code`,
-  `commit_and_push_code`) are `tool({ inputSchema: z…, execute })`.
-- Loop + tools live in `src/worker/agent.ts`. `test_code` budget = 4
-  iterations (enforced in the tool's `execute`); outer cap =
-  `stepCountIs(8)`. On budget exhaustion → extension `status: 'failed'`
-  with `reason`.
+- Model: **`anthropic/claude-opus-4.8`** reached via **raw `env.AI.run`**
+  (Anthropic Messages API shape: `{ max_tokens, system, messages, tools }`).
+  - **Why not the AI SDK here?** `workers-ai-provider` cannot speak the
+    Anthropic-native request/response for this model — it returns
+    `AiGatewayError 7003: User Input Error`. So the generator tool-use loop is
+    **hand-rolled** in `src/worker/agent.ts`: call → read `tool_use` blocks →
+    `execute` → feed `tool_result` blocks back → repeat until `stop_reason !=
+    "tool_use"`. (The classifier still uses the AI SDK `generateObject` on
+    `@cf/zai-org/glm-4.7-flash`, which works fine.)
+  - This is a deliberate, on-stage override of the original "fixed models / no
+    Anthropic / AI-SDK-drives-the-loop" rule, made because `kimi-k2.6` finished
+    without ever emitting tool calls.
+- Tools: `test_code`, `commit_and_push_code` (Anthropic `input_schema` JSON).
+  `test_code` budget = 4 calls; outer cap = 8 loop steps (`MAX_STEPS`).
+  Verified end-to-end: "make the album covers spin slowly" → `ready` in ~100s.
 
 ### Agent execution model (FROZEN)
 
@@ -566,6 +572,16 @@ decisions made.
   over the repo `remote` + a scoped token (the `ARTIFACTS` binding can only
   create/manage repos + mint tokens). Repo name:
   `ext-<id>-<slug(title)>`. Files: `index.js`, `README.md`, `prompt.json`.
+- Two gotchas fixed on stage:
+  1. **`MemoryFS` errors must carry `err.code`** (e.g. `ENOENT`) — isomorphic-git
+     branches on the code (`FileSystem.exists` swallows `ENOENT`); a plain
+     `Error` whose message merely starts with `ENOENT:` is rethrown. It also
+     binds `readlink`/`symlink` unconditionally, so those must exist.
+  2. **The `get()` repo handle is an RPC stub that exposes methods only** —
+     `handle.remote` is not readable over RPC. The git remote is built
+     deterministically from `env.ARTIFACTS_BASE` (`<base>/<name>.git`); `get()`
+     is used only to mint a scoped token. `getRepoAccess` retries on
+     `NOT_FOUND` to absorb read-after-write lag.
 
 ### New endpoints (Phase 2)
 
