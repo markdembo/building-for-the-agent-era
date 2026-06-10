@@ -13,32 +13,47 @@ not re-derive any of that — trust it.
 
 ## Reality check before you start (you are live; do not refuse)
 
-Phase 1's `AGENTS.md` will tell you which fallbacks were taken
-(Artifacts → R2-backed shim? Kumo → shadcn/ui? Cloudflare AI →
-Anthropic via OpenAI-compatible endpoint?). **Use those same fallbacks.**
+Phase 1's `AGENTS.md` will tell you which fallbacks were taken (e.g.
+Artifacts availability, Kumo availability). **Use those same fallbacks.**
 Don't introduce a third path mid-demo. If something Phase 1 promised is
 missing, surface it in one sentence on screen, fall back to a documented
 substitute, and keep moving. The audience would rather see something
 imperfect work than watch you stop.
 
-Concrete fallbacks already pre-decided:
+**Models are FIXED — no provider switching, no Anthropic, no
+OpenAI-compatible endpoint, no model menu.** Two Workers AI models, both
+called via `env.AI.run(...)`:
 
-- LLM calls: `env.AI.run("@cf/<model>", { response_format: { type: "json_schema", json_schema: {...} } })`
-  (https://developers.cloudflare.com/workers-ai/features/json-mode/). If
-  the model rejects the schema or `env.AI` is unavailable, use the
-  OpenAI-compatible Workers AI endpoint
-  (https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/)
-  or the Anthropic API via secret `ANTHROPIC_API_KEY`
-  (https://docs.claude.com/en/api/overview).
-- Artifacts tool calls: use the `src/worker/artifacts.ts` interface Phase
-  1 left. Do not call the underlying storage directly.
+- **Classification (gatekeeper):** `@cf/zai-org/glm-4.7-flash` — fast,
+  cheap, 131K context, structured JSON output + tool calling.
+- **Code generation + agent loop:** `@cf/moonshotai/kimi-k2.6` — frontier
+  agentic model, 262K context, multi-turn tool calling + structured
+  outputs.
+
+Both are Cloudflare-hosted and use the OpenAI-style chat schema
+(`messages`, `tools`, `tool_choice`, `response_format`,
+`choices[].message`). The exact call shapes are inlined below in
+§"Inlined platform reference" — do NOT webfetch the model or JSON-mode
+docs. If `env.AI` is unavailable, stop and surface it; do not invent a
+fallback provider.
+
+Concrete decisions already made:
+
+- **Artifacts:** the `ARTIFACTS` binding only *creates and manages repos*
+  (`create`, `get`, `createToken`, `fork`, `delete`) — it **cannot read
+  or write files** inside them. Commit/read/log are done with
+  [`isomorphic-git`](https://isomorphic-git.org/) over the repo `remote` +
+  a write/read token, using an in-memory filesystem. The full flow
+  (commit+push, read-back, log) is inlined below — do NOT webfetch it.
+  Drive everything through the `src/worker/artifacts.ts` interface; never
+  touch underlying storage directly.
 - `test_code` and the `/x/:id` serving path BOTH use Dynamic Workers
   (https://developers.cloudflare.com/dynamic-workers/) via the `LOADER`
   binding Phase 1 wired. `test_code` uses `env.LOADER.load(...)` for
   one-shot validation; `/x/:id` uses `env.LOADER.get(cacheKey, callback)`
   for cached serving. Both pass `globalOutbound: null` and no
   `bindings`. Do not invent a separate sandbox or evaluator —
-  Dynamic Workers is the sandbox.
+  Dynamic Workers is the sandbox. API shapes inlined below.
 
 ---
 
@@ -101,7 +116,9 @@ Replace the 501 stub in `src/worker/submit.ts` with:
 3. Call the gatekeeper classifier (ONE LLM call) via
    `callLLMJson` (the helper Phase 1 stubbed in `src/worker/llm.ts` —
    implement its body now: structured-JSON mode, schema validation, one
-   retry on invalid JSON).
+   retry on invalid JSON). The classifier model is **fixed**:
+   `@cf/zai-org/glm-4.7-flash`. See the `callLLMJson` implementation
+   inlined in §"Inlined platform reference → Workers AI".
 
    Schema:
 
@@ -165,7 +182,10 @@ everywhere. One call, two jobs.
 
 Implement in `src/worker/agent.ts`. Use the Cloudflare Agents SDK. The
 agent runs in a Durable Object (or via `ctx.waitUntil` for simplicity if
-time is tight — pick one and stick to it).
+time is tight — pick one and stick to it). The generator model is
+**fixed**: `@cf/moonshotai/kimi-k2.6`, driven through `env.AI.run` with
+the OpenAI-style `tools` array (see §"Inlined platform reference →
+Workers AI → tool-use loop"). No other model, no provider switching.
 
 The agent has exactly two tools:
 
@@ -203,9 +223,11 @@ const response = await worker.getEntrypoint().fetch(
 The tool MUST:
 
 - Capture `response.status` and a copy of the response body.
-- Capture `console.*` from the isolate (use a custom Tail or
-  observability path — see
-  https://developers.cloudflare.com/dynamic-workers/usage/observability/).
+- Capture `console.*` from the isolate via a Tail Worker attached with
+  the `tails` option (the isolate's logs are NOT captured by the parent
+  automatically). The full Tail-Worker pattern is inlined in
+  §"Inlined platform reference → Dynamic Workers observability" — do NOT
+  webfetch it.
 - Treat any throw / unhandled rejection in the isolate as an entry in
   `errors`.
 - Time out the `fetch` at 5 seconds via `AbortSignal.timeout(5000)`.
@@ -237,18 +259,32 @@ commit_and_push_code(input: {
 }>
 ```
 
-Implementation: via the `ARTIFACTS` binding (or the `artifacts.ts` shim
-declared by Phase 1).
+Implementation: through the `src/worker/artifacts.ts` interface, which
+wraps the `ARTIFACTS` binding for repo lifecycle and `isomorphic-git` for
+file operations. **The `ARTIFACTS` binding cannot write files** — it only
+creates/manages repos and mints tokens. Files are committed and pushed
+with `isomorphic-git` over an in-memory filesystem. The complete
+commit+push flow and the `MemoryFS` helper are inlined in §"Inlined
+platform reference → Artifacts + isomorphic-git" — copy them; do NOT
+webfetch.
 
 - Repo name: `ext-<extensionId>-<slug>` where slug = `slugify(title)`
   (kebab-case, ascii, max 40 chars).
-- If the repo doesn't exist, create it. If it exists (retry), open it.
-- Commit files: `index.js` (the Worker module source — the extension
-  itself), `README.md` (human-readable prompt + classifier output +
-  metadata), `prompt.json` (structured metadata).
+- If the repo doesn't exist, `env.ARTIFACTS.create(name)`. If it exists
+  (retry), `env.ARTIFACTS.get(name)` and mint a write token via
+  `repo.createToken("write", ttl)`.
+- Build the tree in `MemoryFS`, commit, and `git.push` to the repo
+  `remote` using `onAuth: () => ({ username: "x", password: tokenSecret })`
+  (strip any `?expires=...` suffix off the token first).
+- Files: `index.js` (the Worker module source — the extension itself),
+  `README.md` (human-readable prompt + classifier output + metadata),
+  `prompt.json` (structured metadata).
 - Commit message: `feat: <title>` on first commit;
-  `iterate: <title> (attempt N)` on subsequent ones.
-- Push. Return `artifact_ref`, `commit_sha`, `commit_message`.
+  `iterate: <title> (attempt N)` on subsequent ones. On retry, clone the
+  existing repo into `MemoryFS` first so the new commit has the prior
+  history as its parent.
+- Push. Return `artifact_ref` (the repo name), `commit_sha` (from
+  `git.commit`), and `commit_message`.
 
 **There is no separate "deploy" step.** `env.LOADER.get(extensionId, ...)`
 at `/x/:id` pulls the latest source from Artifacts on cache miss, so the
@@ -437,13 +473,16 @@ Behavior:
      (https://developers.cloudflare.com/dynamic-workers/getting-started/):
 
      ```js
-     const cacheKey = `${ext.id}@${ext.last_commit_sha}`;
-     const worker = env.LOADER.get(cacheKey, async () => {
-       const code = await loadExtensionSource(
-         ext.artifact_ref,
-         ext.last_commit_sha,
-       ); // reads index.js from the Artifacts repo
-       return {
+      const cacheKey = `${ext.id}@${ext.last_commit_sha}`;
+      const worker = env.LOADER.get(cacheKey, async () => {
+        const code = await loadExtensionSource(
+          ext.artifact_ref,
+          ext.last_commit_sha,
+        ); // reads index.js from the Artifacts repo via isomorphic-git:
+           // get a read token, clone (depth 1) the repo into MemoryFS,
+           // then fs.promises.readFile("/workspace/index.js"). See the
+           // inlined read-back helper in §"Inlined platform reference".
+        return {
          compatibilityDate: env.LOADER_COMPAT_DATE,
          mainModule: "index.js",
          modules: { "index.js": code },
@@ -657,7 +696,343 @@ Rough allocation if you have it; ship Step 1+2+4+6 before Step 5 polish.
 
 ---
 
-## Documentation references
+## Inlined platform reference (canonical — do NOT webfetch these)
+
+Everything you need to write the four integrations (Workers AI, Artifacts
+via isomorphic-git, Dynamic Workers, observability) is copied here from
+the official docs as of `2026-06-10`. **Do not spend live time fetching
+docs for these APIs.** Only search the docs MCP if something here is
+demonstrably wrong against the installed SDK.
+
+### Workers AI (the two FIXED models)
+
+Both models are Cloudflare-hosted and called via `env.AI.run(modelId, body)`.
+Bodies use the OpenAI chat schema. There is **no** Anthropic, **no**
+OpenAI-compatible endpoint, **no** model menu.
+
+| job              | model id                       | notes                                       |
+| ---------------- | ------------------------------ | ------------------------------------------- |
+| classification   | `@cf/zai-org/glm-4.7-flash`    | fast, 131K ctx, JSON output + tool calling  |
+| code gen / agent | `@cf/moonshotai/kimi-k2.6`     | 262K ctx, multi-turn tool calling + JSON    |
+
+`callLLMJson` (implement in `src/worker/llm.ts`) — structured JSON via
+`response_format`, validate, one repair retry:
+
+```ts
+// src/worker/llm.ts
+export async function callLLMJson<T>(env: Env, opts: {
+  model: "@cf/zai-org/glm-4.7-flash" | "@cf/moonshotai/kimi-k2.6";
+  system: string;
+  user: string;
+  schema: object;          // JSON Schema for the response
+  validate: (v: unknown) => v is T;
+}): Promise<T> {
+  const messages = [
+    { role: "system", content: opts.system },
+    { role: "user", content: opts.user },
+  ];
+  const body = {
+    messages,
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: "result", strict: true, schema: opts.schema },
+    },
+  };
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res: any = await env.AI.run(opts.model, body);
+    // env.AI.run returns the OpenAI-style completion; the JSON is a string
+    // in choices[0].message.content (or res.response on some models).
+    const raw =
+      res?.choices?.[0]?.message?.content ?? res?.response ?? "";
+    try {
+      const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+      if (opts.validate(parsed)) return parsed;
+    } catch { /* fall through to retry */ }
+    // repair: append the bad output and ask for valid JSON only
+    messages.push({ role: "assistant", content: String(raw) });
+    messages.push({ role: "user", content: "That was not valid JSON for the schema. Reply with ONLY the corrected JSON." });
+  }
+  throw new Error("callLLMJson: model failed to produce valid JSON twice");
+}
+```
+
+Generator tool-use loop (Kimi K2.6) — OpenAI-style `tools` array. The
+agent loop alternates `env.AI.run` calls and tool execution until the
+model stops requesting tools or the 4-iteration budget is hit:
+
+```ts
+const tools = [
+  { type: "function", function: {
+      name: "test_code",
+      description: "Load the candidate Worker module as a Dynamic Worker and validate it.",
+      parameters: { type: "object", required: ["code"],
+        properties: { code: { type: "string", description: "Full ES module source for index.js" } },
+        additionalProperties: false } } },
+  { type: "function", function: {
+      name: "commit_and_push_code",
+      description: "Commit the validated module to the extension's Artifacts repo and push.",
+      parameters: { type: "object", required: ["code", "readme", "promptJson"],
+        properties: {
+          code: { type: "string" }, readme: { type: "string" },
+          promptJson: { type: "object" } },
+        additionalProperties: false } } },
+];
+
+let messages = [
+  { role: "system", content: GENERATOR_SYSTEM_PROMPT },  // src/prompts/extension-generator.md
+  { role: "user", content: `Prompt: ${prompt}\nTitle: ${title}` },
+];
+
+for (let i = 0; i < 8; i++) {                 // generous outer cap; test_code budget is 4
+  const res: any = await env.AI.run("@cf/moonshotai/kimi-k2.6", { messages, tools, tool_choice: "auto" });
+  const msg = res.choices[0].message;
+  messages.push(msg);
+  const calls = msg.tool_calls ?? [];
+  if (calls.length === 0) break;              // model is done talking
+  for (const call of calls) {
+    const args = JSON.parse(call.function.arguments);
+    const result = call.function.name === "test_code"
+      ? await test_code(env, args.code)
+      : await commit_and_push_code(env, { extensionId, title, ...args });
+    messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
+  }
+}
+```
+
+### Artifacts + isomorphic-git
+
+**The `ARTIFACTS` binding cannot read or write files** — it only
+creates/manages repos and mints tokens. Use `isomorphic-git` over the
+repo's git-over-HTTPS `remote` with a token for Basic auth. Add the dep
+to the Worker (not the UI): `npm i isomorphic-git`. Reference:
+https://developers.cloudflare.com/artifacts/examples/isomorphic-git/
+
+`ARTIFACTS` binding surface (namespace methods on `env.ARTIFACTS`):
+
+- `create(name, opts?)` → `{ name, remote, defaultBranch, token }`
+  (`token` is the initial git token; format `art_v1_<secret>?expires=<unix>`).
+- `get(name)` → repo handle (throws if missing/not ready). Handle methods:
+  `createToken(scope?: "read"|"write", ttl?: number)` →
+  `{ plaintext, expiresAt }`, `listTokens()`, `revokeToken(id)`, `fork(...)`.
+- `list(opts?)`, `import(params)`, `delete(name)`.
+
+Git Basic auth wants only the secret (strip the `?expires=...` suffix):
+`const tokenSecret = token.split("?expires=")[0];` then
+`onAuth: () => ({ username: "x", password: tokenSecret })`.
+
+`commit_and_push_code` (wire into `src/worker/artifacts.ts`):
+
+```ts
+import git from "isomorphic-git";
+import http from "isomorphic-git/http/web";
+import { MemoryFS } from "./memory-fs"; // inlined below
+
+export async function commitFiles(env: Env, opts: {
+  repoName: string; remote: string; tokenSecret: string;
+  files: Record<string, string>; message: string; cloneFirst: boolean;
+}): Promise<{ commit_sha: string }> {
+  const dir = "/workspace";
+  const fs = new MemoryFS();
+  if (opts.cloneFirst) {
+    await git.clone({ fs, http, dir, url: opts.remote, ref: "main",
+      singleBranch: true, depth: 1,
+      onAuth: () => ({ username: "x", password: opts.tokenSecret }) });
+  } else {
+    await git.init({ fs, dir, defaultBranch: "main" });
+  }
+  for (const [path, content] of Object.entries(opts.files)) {
+    await fs.promises.writeFile(`${dir}/${path}`, content);
+    await git.add({ fs, dir, filepath: path });
+  }
+  const commit_sha = await git.commit({ fs, dir, message: opts.message,
+    author: { name: "extension-generator", email: "agent@vinyl.app" } });
+  await git.push({ fs, http, dir, url: opts.remote, ref: "main",
+    onAuth: () => ({ username: "x", password: opts.tokenSecret }) });
+  return { commit_sha };
+}
+```
+
+Read a file back (serve path + `/code` endpoint): clone shallow, then read.
+
+```ts
+export async function readFile(env: Env, opts: {
+  remote: string; tokenSecret: string; ref: string; path: string;
+}): Promise<string> {
+  const dir = "/workspace";
+  const fs = new MemoryFS();
+  await git.clone({ fs, http, dir, url: opts.remote, ref: "main",
+    singleBranch: true, depth: 1,
+    onAuth: () => ({ username: "x", password: opts.tokenSecret }) });
+  return fs.promises.readFile(`${dir}/${opts.path}`, "utf8") as Promise<string>;
+}
+```
+
+Commit history (the `/commits` endpoint): clone, then `git.log`.
+
+```ts
+const commits = await git.log({ fs, dir, ref: "main", depth: 20 });
+// → [{ oid, commit: { message, author: { name, timestamp } } }, ...]
+```
+
+`MemoryFS` helper (`src/worker/memory-fs.ts`) — in-memory `fs` for
+isomorphic-git in Workers. Copy verbatim:
+
+```js
+class MemoryStats {
+  constructor(entry) { this.entry = entry; }
+  get size() { return this.entry.kind === "file" ? this.entry.data.byteLength : 0; }
+  get mtimeMs() { return this.entry.mtimeMs; }
+  get ctimeMs() { return this.entry.mtimeMs; }
+  get mode() { return this.entry.kind === "file" ? 0o100644 : 0o040000; }
+  isFile() { return this.entry.kind === "file"; }
+  isDirectory() { return this.entry.kind === "dir"; }
+  isSymbolicLink() { return false; }
+}
+
+export class MemoryFS {
+  encoder = new TextEncoder();
+  decoder = new TextDecoder();
+  entries = new Map([["/", { kind: "dir", children: new Set(), mtimeMs: Date.now() }]]);
+  promises = {
+    readFile: this.readFile.bind(this), writeFile: this.writeFile.bind(this),
+    unlink: this.unlink.bind(this), readdir: this.readdir.bind(this),
+    mkdir: this.mkdir.bind(this), rmdir: this.rmdir.bind(this),
+    stat: this.stat.bind(this), lstat: this.lstat.bind(this),
+  };
+  normalize(input) {
+    const segments = [];
+    for (const part of input.split("/")) {
+      if (!part || part === ".") continue;
+      if (part === "..") { segments.pop(); continue; }
+      segments.push(part);
+    }
+    return `/${segments.join("/")}` || "/";
+  }
+  parent(path) {
+    const n = this.normalize(path);
+    if (n === "/") return "/";
+    const parts = n.split("/").filter(Boolean); parts.pop();
+    return parts.length ? `/${parts.join("/")}` : "/";
+  }
+  basename(path) { return this.normalize(path).split("/").filter(Boolean).pop() ?? ""; }
+  getEntry(path) { return this.entries.get(this.normalize(path)); }
+  requireEntry(path) { const e = this.getEntry(path); if (!e) throw new Error(`ENOENT: ${path}`); return e; }
+  requireDir(path) { const e = this.requireEntry(path); if (e.kind !== "dir") throw new Error(`ENOTDIR: ${path}`); return e; }
+  async mkdir(path, options) {
+    const target = this.normalize(path); if (target === "/") return;
+    const recursive = typeof options === "object" && options !== null && options.recursive;
+    const parent = this.parent(target);
+    if (!this.entries.has(parent)) { if (!recursive) throw new Error(`ENOENT: ${parent}`); await this.mkdir(parent, { recursive: true }); }
+    if (this.entries.has(target)) return;
+    this.entries.set(target, { kind: "dir", children: new Set(), mtimeMs: Date.now() });
+    this.requireDir(parent).children.add(this.basename(target));
+  }
+  async writeFile(path, data) {
+    const target = this.normalize(path);
+    await this.mkdir(this.parent(target), { recursive: true });
+    const bytes = typeof data === "string" ? this.encoder.encode(data)
+      : data instanceof Uint8Array ? data : new Uint8Array(data);
+    this.entries.set(target, { kind: "file", data: bytes, mtimeMs: Date.now() });
+    this.requireDir(this.parent(target)).children.add(this.basename(target));
+  }
+  async readFile(path, options) {
+    const entry = this.requireEntry(path); if (entry.kind !== "file") throw new Error(`EISDIR: ${path}`);
+    const encoding = typeof options === "string" ? options : options?.encoding;
+    return encoding ? this.decoder.decode(entry.data) : entry.data;
+  }
+  async readdir(path) { return [...this.requireDir(path).children].sort(); }
+  async unlink(path) {
+    const target = this.normalize(path); const e = this.requireEntry(target);
+    if (e.kind !== "file") throw new Error(`EISDIR: ${path}`);
+    this.entries.delete(target); this.requireDir(this.parent(target)).children.delete(this.basename(target));
+  }
+  async rmdir(path) {
+    const target = this.normalize(path); const e = this.requireDir(target);
+    if (e.children.size > 0) throw new Error(`ENOTEMPTY: ${path}`);
+    this.entries.delete(target); this.requireDir(this.parent(target)).children.delete(this.basename(target));
+  }
+  async stat(path) { return new MemoryStats(this.requireEntry(path)); }
+  async lstat(path) { return this.stat(path); }
+}
+```
+
+### Dynamic Workers (`env.LOADER`)
+
+`worker_loaders` binding gives `env.LOADER` with two methods:
+
+- `env.LOADER.load(code: WorkerCode): WorkerStub` — fresh isolate every
+  call; no caching. Use for `test_code`.
+- `env.LOADER.get(id: string, () => Promise<WorkerCode>): WorkerStub` —
+  caches by `id`; callback only runs on cache miss. **Same `id` must map
+  to identical code** — that's why the serve cache key includes the SHA.
+  Use for `/x/:id`.
+
+`WorkerCode` fields used here: `compatibilityDate` (string),
+`mainModule` (string, must exist in `modules`), `modules`
+(`Record<string, string>` — plain string values need a `.js`/`.py`
+extension), `globalOutbound` (`null` = fully cut off from the network;
+omitting it inherits the parent's network — **always pass `null`**),
+`tails` (optional `ServiceStub[]` for log capture). Get the entrypoint
+with `worker.getEntrypoint().fetch(request)`.
+
+`test_code` skeleton:
+
+```ts
+export async function test_code(env: Env, ctx: ExecutionContext, code: string) {
+  const errors: string[] = []; const logs: string[] = [];
+  try {
+    const worker = env.LOADER.load({
+      compatibilityDate: env.LOADER_COMPAT_DATE,
+      mainModule: "index.js",
+      modules: { "index.js": code },
+      globalOutbound: null,                       // FROZEN
+      tails: [ctx.exports.DynamicWorkerTail({ props: { sink: logs } })], // see below
+    });
+    const res = await worker.getEntrypoint().fetch(
+      new Request("https://test.local/"), { signal: AbortSignal.timeout(5000) });
+    const html = (await res.text()).slice(0, 64 * 1024);
+    const ok = res.status === 200 && html.trim().length > 0 && errors.length === 0;
+    return { ok, status: res.status, html, logs, errors };
+  } catch (e: any) {
+    if (e?.name === "TimeoutError") errors.push("timeout"); else errors.push(String(e?.message ?? e));
+    return { ok: false, status: 0, html: "", logs, errors };
+  }
+}
+```
+
+### Dynamic Workers observability (capturing `console.*`)
+
+The isolate's logs are NOT visible to the parent automatically. Attach a
+Tail Worker via the `tails` option using `ctx.exports`. Define the Tail
+Worker as a named export on the loader Worker:
+
+```ts
+import { WorkerEntrypoint } from "cloudflare:workers";
+
+export class DynamicWorkerTail extends WorkerEntrypoint {
+  async tail(events) {
+    for (const event of events) {
+      for (const log of event.logs) {
+        // For real-time test_code, push into a Durable Object or a
+        // shared sink keyed via this.ctx.props; for stored logs, just
+        // console.log here (captured by Workers Logs on the parent).
+        console.log({ source: "dynamic-worker-tail", level: log.level, message: log.message });
+      }
+    }
+  }
+}
+```
+
+`tails` runs asynchronously after the response, so for synchronous
+`test_code` log capture, use the Durable-Object log-session pattern from
+the Dynamic Workers Playground (create a session before the fetch, read
+it after). If time is tight, capture only `errors` (thrown/rejected) and
+leave `logs` as a best-effort array.
+
+---
+
+## Documentation references (only if the inlined copy above is insufficient)
 
 Search the Cloudflare Docs MCP (`cloudflare_docs_search_cloudflare_documentation`)
 for the current version of any of these. The product names have moved
@@ -679,22 +1054,20 @@ around — if a URL 404s, search.
 ### LLM / Agents
 
 - Workers AI — https://developers.cloudflare.com/workers-ai/
+- `@cf/moonshotai/kimi-k2.6` (generator) —
+  https://developers.cloudflare.com/workers-ai/models/kimi-k2.6/
+- `@cf/zai-org/glm-4.7-flash` (classifier) —
+  https://developers.cloudflare.com/workers-ai/models/glm-4.7-flash/
 - Workers AI JSON mode / structured outputs —
   https://developers.cloudflare.com/workers-ai/features/json-mode/
-- Workers AI bindings reference —
-  https://developers.cloudflare.com/workers-ai/configuration/bindings/
-- Workers AI OpenAI-compatible endpoint —
-  https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/
-- AI Gateway (optional logging/caching layer) —
-  https://developers.cloudflare.com/ai-gateway/
+- Workers AI function calling —
+  https://developers.cloudflare.com/workers-ai/function-calling/
 - Cloudflare Agents SDK overview — https://developers.cloudflare.com/agents/
 - Agents API reference (`Agent` base class, tools, state) —
   https://developers.cloudflare.com/agents/runtime/agents-api/
 - Agents → Durable Objects requirement —
   https://developers.cloudflare.com/agents/runtime/operations/configuration/
 - Durable Objects — https://developers.cloudflare.com/durable-objects/
-- Anthropic API (fallback LLM provider) —
-  https://docs.claude.com/en/api/overview
 
 ### Dynamic Workers (the execution primitive — load-bearing)
 
@@ -713,10 +1086,13 @@ around — if a URL 404s, search.
 - Observability —
   https://developers.cloudflare.com/dynamic-workers/usage/observability/
 
-### Storage (for the Artifacts shim)
+### Storage (Artifacts + git)
 
-- R2 — https://developers.cloudflare.com/r2/
-- R2 Workers API — https://developers.cloudflare.com/r2/api/workers/workers-api-reference/
+- Artifacts Workers binding —
+  https://developers.cloudflare.com/artifacts/api/workers-binding/
+- Artifacts isomorphic-git example (commit/push from a Worker) —
+  https://developers.cloudflare.com/artifacts/examples/isomorphic-git/
+- isomorphic-git API — https://isomorphic-git.org/docs/en/alphabetic
 - D1 worker API — https://developers.cloudflare.com/d1/worker-api/
 
 ### Wrangler / config

@@ -17,7 +17,7 @@ Also produce a third file, `AGENTS.md`, to be placed in the repo by Phase 1 — 
 
 A conference talk. The base app is a personal vinyl collection viewer. On stage, an agent (Phase 2) adds "personalized software": audience members scan a QR code, type a prompt describing an extension ("make the covers spin", "redesign it like Windows 95", "add a search filter"), an agent generates the extension code, and it runs as an isolated, stateless view over the same data. The architecture story is: **store of record stays fixed; the presentation layer is prompted into existence per user.**
 
-Cloudflare stack to use: Workers, Workers Static Assets, **Dynamic Workers** (https://developers.cloudflare.com/dynamic-workers/ — the Worker Loader / `worker_loaders` binding) to spin up an isolated, sandboxed Worker on demand to execute each generated extension's code, **Artifacts** (Git-compatible code storage) to durably hold the source of every extension with commit history, Agents SDK, Workers AI or the Anthropic API for LLM calls, D1 or KV for the data layer.
+Cloudflare stack to use: Workers, Workers Static Assets, **Dynamic Workers** (https://developers.cloudflare.com/dynamic-workers/ — the Worker Loader / `worker_loaders` binding) to spin up an isolated, sandboxed Worker on demand to execute each generated extension's code, **Artifacts** (Git-compatible code storage) to durably hold the source of every extension with commit history, Agents SDK, Workers AI for LLM calls (FIXED models: `@cf/zai-org/glm-4.7-flash` for classification, `@cf/moonshotai/kimi-k2.6` for code gen/agent loop — no Anthropic, no provider switching), D1 or KV for the data layer.
 
 The flow that defines the architecture:
 
