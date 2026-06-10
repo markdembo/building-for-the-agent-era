@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Building for the Agent Era — Cloudflare Immerse Munich 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     CONFIG: set your real short URL here for the QR slides.
+     The QR image is generated via api.qrserver.com (needs internet).
+     If offline, a placeholder pattern is shown — print a paper
+     backup QR as per the stagecraft checklist.
+     ============================================================ */
+
+  :root {
+    --cf-orange: #f6821f;
+    --cf-orange-deep: #f3501e;
+    --cf-orange-red: #ee4b12;
+    --ink: #0c0c0e;
+    --ink-2: #131316;
+    --paper: #ffffff;
+    --dim: rgba(255, 255, 255, 0.62);
+    --dim-2: rgba(255, 255, 255, 0.38);
+    --line: rgba(255, 255, 255, 0.16);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--ink);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    color: var(--paper);
+  }
+
+  /* ---------- deck mechanics ---------- */
+  .deck { position: relative; width: 100vw; height: 100vh; }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6vh 7vw;
+    text-align: center;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(14px) scale(0.992);
+    transition: opacity 0.45s ease, transform 0.45s ease, visibility 0s linear 0.45s;
+  }
+  .slide.active {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    transition: opacity 0.45s ease, transform 0.45s ease;
+  }
+
+  /* ---------- backgrounds ---------- */
+  .slide.dark {
+    background:
+      radial-gradient(1100px 500px at 50% 118%, rgba(246, 130, 31, 0.13), transparent 65%),
+      radial-gradient(rgba(255,255,255,0.045) 1px, transparent 1.4px),
+      linear-gradient(180deg, #0e0e11 0%, #0a0a0c 100%);
+    background-size: auto, 22px 22px, auto;
+  }
+
+  .slide.orange {
+    background:
+      radial-gradient(900px 480px at 50% 112%, rgba(255, 232, 150, 0.85), rgba(255, 196, 110, 0.32) 42%, transparent 68%),
+      radial-gradient(rgba(255, 255, 255, 0.13) 1.2px, transparent 1.7px),
+      linear-gradient(160deg, var(--cf-orange-deep) 0%, var(--cf-orange-red) 55%, #e8430e 100%);
+    background-size: auto, 22px 22px, auto;
+  }
+
+  /* ---------- stepped reveal slide ---------- */
+  .slide.seq {
+    background:
+      radial-gradient(rgba(17, 17, 17, 0.07) 1.2px, transparent 1.7px),
+      #ffffff;
+    background-size: 22px 22px, auto;
+    color: #111;
+  }
+  .seq-orange {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.8s ease;
+    pointer-events: none;
+    background:
+      radial-gradient(900px 480px at 50% 112%, rgba(255, 232, 150, 0.85), rgba(255, 196, 110, 0.32) 42%, transparent 68%),
+      radial-gradient(rgba(255, 255, 255, 0.13) 1.2px, transparent 1.7px),
+      linear-gradient(160deg, var(--cf-orange-deep) 0%, var(--cf-orange-red) 55%, #e8430e 100%);
+    background-size: auto, 22px 22px, auto;
+  }
+  .seq.s2 .seq-orange { opacity: 1; }
+  .seq-inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .logo-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55em;
+    font-weight: 700;
+    font-size: clamp(1.5rem, 2.8vw, 2.5rem);
+    letter-spacing: -0.01em;
+    color: #111;
+    transition: color 0.7s ease;
+  }
+  .logo-item img { height: 1.45em; width: auto; display: block; transition: filter 0.7s ease; }
+  .seq.s2 .logo-item { color: #fff; opacity: 0.8; }
+  .seq.s2 .logo-item img { filter: brightness(0) invert(1); }
+  .logo-item { transition: color 0.7s ease, opacity 0.7s ease; }
+  .seq-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(24px);
+    overflow: hidden;
+    margin-top: 0;
+    transition: max-height 0.7s ease, opacity 0.6s ease, transform 0.6s ease, margin 0.7s ease;
+  }
+  .seq.s1 .seq-text, .seq.s2 .seq-text { max-height: 70vh; opacity: 1; transform: none; margin-top: 6vh; }
+  .seq .r1 {
+    color: #111;
+    transition: color 0.7s ease, font-size 0.7s ease, opacity 0.7s ease;
+  }
+  .seq.s2 .r1 {
+    color: #fff;
+    opacity: 0.8;
+    font-size: clamp(1.15rem, 2.1vw, 1.8rem);
+    font-weight: 600;
+  }
+  .seq .r2 {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    margin-top: 0;
+    transition: max-height 0.7s ease, opacity 0.6s ease, margin 0.7s ease;
+  }
+  .seq.s2 .r2 { max-height: 70vh; opacity: 1; margin-top: 4.5vh; }
+  .seq .r2 svg { width: clamp(150px, 15vw, 250px) !important; }
+  .seq .r2 h2 {
+    color: #fff;
+    font-size: clamp(2.6rem, 5.8vw, 5.2rem);
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+  }
+
+  /* ---------- type ---------- */
+  .kicker {
+    font-size: clamp(0.7rem, 1.1vw, 0.9rem);
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--dim-2);
+    margin-bottom: 3.5vh;
+  }
+  .orange .kicker { color: rgba(255,255,255,0.7); }
+
+  h1 {
+    font-size: clamp(2.6rem, 6.4vw, 6rem);
+    font-weight: 700;
+    line-height: 1.06;
+    letter-spacing: -0.025em;
+    max-width: 18ch;
+  }
+  h2 {
+    font-size: clamp(2rem, 4.6vw, 4.2rem);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    max-width: 22ch;
+  }
+  .sub {
+    margin-top: 3.5vh;
+    font-size: clamp(1rem, 1.7vw, 1.45rem);
+    font-weight: 400;
+    line-height: 1.55;
+    color: var(--dim);
+    max-width: 52ch;
+  }
+  .orange .sub { color: rgba(255,255,255,0.92); }
+
+  .accent { color: var(--cf-orange); }
+
+  .slide-link {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: 0.045em;
+    text-underline-offset: 0.14em;
+    text-decoration-color: rgba(255, 255, 255, 0.45);
+    transition: text-decoration-color 0.3s ease;
+  }
+  .slide-link:hover { text-decoration-color: #fff; }
+
+  .reveal-line {
+    font-family: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+    font-style: italic;
+    font-weight: 400;
+    font-size: clamp(2rem, 4vw, 3.6rem);
+    color: var(--cf-orange);
+    margin-top: 6vh;
+    opacity: 0;
+    transform: translateY(16px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .slide.s1 .reveal-line { opacity: 1; transform: none; }
+  .orange .accent { color: #ffe9a8; }
+
+  /* ---------- pieces ---------- */
+  .pill {
+    display: inline-block;
+    margin-top: 4.5vh;
+    background: var(--paper);
+    color: #1a1a1a;
+    font-weight: 600;
+    font-size: clamp(0.95rem, 1.4vw, 1.2rem);
+    padding: 0.95em 2.2em;
+    border-radius: 999px;
+  }
+
+  .logo-row {
+    display: flex;
+    gap: clamp(2rem, 5vw, 4.5rem);
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cf-cloud { display: block; margin: 0 auto 2.5vh; }
+
+  /* diagrams */
+  .diagram { display: flex; align-items: stretch; justify-content: center; gap: 0; flex-wrap: wrap; margin-top: 5vh; }
+  .dbox {
+    border: 1.5px solid var(--line);
+    border-radius: 16px;
+    padding: clamp(1rem, 2.2vh, 1.6rem) clamp(1rem, 1.8vw, 1.7rem);
+    min-width: clamp(120px, 13vw, 200px);
+    max-width: 240px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.45em;
+    background: rgba(255,255,255,0.03);
+  }
+  .dbox .t { font-weight: 700; font-size: clamp(0.95rem, 1.5vw, 1.25rem); line-height: 1.25; }
+  .dbox .d { font-size: clamp(0.75rem, 1.05vw, 0.95rem); color: var(--dim); line-height: 1.4; }
+  .dbox.hot { border-color: var(--cf-orange); background: rgba(246, 130, 31, 0.09); }
+  .dbox.hot .t { color: var(--cf-orange); }
+  .darrow {
+    align-self: center;
+    color: var(--cf-orange);
+    font-size: clamp(1.2rem, 2vw, 1.8rem);
+    padding: 0 clamp(0.4rem, 1vw, 0.9rem);
+    font-weight: 400;
+  }
+  @media (max-width: 1280px) {
+    .diagram { flex-direction: column; align-items: center; gap: 0.5vh; }
+    .dbox { min-width: min(420px, 70vw); max-width: none; }
+    .darrow { transform: rotate(90deg); padding: 0.1em 0; }
+  }
+
+  .stack { display: flex; flex-direction: column; gap: 1.2vh; margin-top: 5vh; width: min(680px, 80vw); }
+  .layer {
+    border: 1.5px solid var(--line);
+    border-radius: 16px;
+    padding: 3.2vh 2rem;
+    background: rgba(255,255,255,0.03);
+    position: relative;
+  }
+  .layer .tag {
+    position: absolute;
+    top: -0.85em;
+    left: 1.4rem;
+    background: var(--ink);
+    padding: 0.15em 0.8em;
+    font-size: clamp(0.68rem, 1vw, 0.85rem);
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--dim-2);
+    border-radius: 999px;
+  }
+  .layer .t { font-weight: 700; font-size: clamp(1.2rem, 2.2vw, 1.8rem); }
+  .layer .d { margin-top: 0.4em; color: var(--dim); font-size: clamp(0.85rem, 1.2vw, 1.05rem); }
+  .layer.hot { border-color: var(--cf-orange); background: rgba(246,130,31,0.08); }
+  .layer.hot .tag { color: var(--cf-orange); }
+
+  .grid2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(240px, 380px));
+    gap: 1.4vh 1.2vw;
+    margin-top: 5vh;
+  }
+  .grid2 .dbox { max-width: none; text-align: left; }
+
+  /* verge headline card */
+  .headline-card {
+    margin-top: 4.5vh;
+    width: min(780px, 84vw);
+    border-radius: 20px;
+    overflow: hidden;
+    text-align: left;
+    background: #17171b;
+    border: 1px solid var(--line);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+  }
+  .headline-card .bar {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.7rem 1.1rem;
+    background: #1f1f24;
+    border-bottom: 1px solid var(--line);
+  }
+  .headline-card .dot { width: 11px; height: 11px; border-radius: 50%; background: #3a3a40; }
+  .headline-card .url {
+    margin-left: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--dim-2);
+    background: #141417;
+    border-radius: 999px;
+    padding: 0.3em 1em;
+    flex: 1;
+    text-align: left;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .headline-card .body { padding: clamp(1.4rem, 3.5vh, 2.4rem) clamp(1.4rem, 3vw, 2.4rem); }
+  .headline-card .src { color: #5957f2; font-weight: 800; letter-spacing: 0.06em; font-size: 0.95rem; margin-bottom: 0.9em; }
+  .headline-card .hl { font-weight: 800; font-size: clamp(1.3rem, 2.6vw, 2.1rem); line-height: 1.2; letter-spacing: -0.01em; }
+  .headline-card .sub2 { margin-top: 0.8em; color: var(--dim); font-size: clamp(0.85rem, 1.3vw, 1.05rem); line-height: 1.5; }
+
+  /* QR */
+  .qr-wrap {
+    margin-top: 4vh;
+    background: var(--paper);
+    border-radius: 24px;
+    padding: clamp(0.9rem, 2vh, 1.4rem);
+    box-shadow: 0 30px 90px rgba(0,0,0,0.35);
+    line-height: 0;
+  }
+  .qr-wrap img, .qr-wrap svg { width: clamp(200px, 36vh, 340px); height: clamp(200px, 36vh, 340px); display: block; }
+  .qr-url {
+    margin-top: 3vh;
+    font-weight: 700;
+    font-size: clamp(1.4rem, 3vw, 2.4rem);
+    letter-spacing: -0.01em;
+  }
+
+  .links { margin-top: 4vh; display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+  .link-chip {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.6em 1.4em;
+    color: var(--dim);
+    font-size: clamp(0.85rem, 1.2vw, 1.05rem);
+    font-weight: 500;
+  }
+
+  /* ---------- title slide (split view, animated gradient) ---------- */
+  .title-slide {
+    flex-direction: row;
+    align-items: stretch;
+    padding: 0;
+    background: linear-gradient(160deg, var(--cf-orange-deep) 0%, var(--cf-orange-red) 55%, #e8430e 100%);
+    overflow: hidden;
+  }
+  .title-bg { position: absolute; inset: 0; }
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(70px);
+    will-change: transform;
+  }
+  .blob-1 {
+    width: 75vw; height: 55vw;
+    left: -15vw; bottom: -38vw;
+    background: radial-gradient(ellipse at center, rgba(255, 232, 150, 0.95) 0%, rgba(255, 196, 110, 0.4) 45%, transparent 70%);
+    animation: drift-1 16s ease-in-out infinite alternate;
+  }
+  .blob-2 {
+    width: 50vw; height: 50vw;
+    right: -10vw; top: -25vw;
+    background: radial-gradient(circle at center, rgba(255, 140, 60, 0.75) 0%, transparent 65%);
+    animation: drift-2 22s ease-in-out infinite alternate;
+  }
+  .blob-3 {
+    width: 40vw; height: 40vw;
+    left: 20vw; top: 10vh;
+    background: radial-gradient(circle at center, rgba(232, 60, 10, 0.6) 0%, transparent 65%);
+    animation: drift-3 19s ease-in-out infinite alternate;
+  }
+  @keyframes drift-1 { from { transform: translate(0, 0) scale(1); } to { transform: translate(14vw, -7vh) scale(1.18); } }
+  @keyframes drift-2 { from { transform: translate(0, 0) scale(1); } to { transform: translate(-10vw, 9vh) scale(0.92); } }
+  @keyframes drift-3 { from { transform: translate(0, 0) scale(1); } to { transform: translate(9vw, 8vh) scale(1.12); } }
+  .title-dots {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(rgba(255, 255, 255, 0.13) 1.2px, transparent 1.7px);
+    background-size: 22px 22px;
+  }
+  .title-content {
+    position: relative;
+    z-index: 1;
+    flex: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6vh 5vw;
+  }
+  .title-photo {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    min-width: 31%;
+    /* duotone: highlights take this cream, shadows take the ::after red-orange */
+    background: #fff3e2;
+  }
+  .title-photo img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    filter: grayscale(1) contrast(1.25);
+    mix-blend-mode: multiply;
+  }
+  .title-photo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: #872807;
+    mix-blend-mode: lighten;
+    pointer-events: none;
+  }
+
+  /* social handles */
+  .handles {
+    margin-top: 4vh;
+    display: flex;
+    gap: clamp(1.4rem, 3vw, 2.6rem);
+    justify-content: center;
+    align-items: center;
+    font-weight: 600;
+    font-size: clamp(0.95rem, 1.5vw, 1.25rem);
+    color: #fff;
+  }
+  .handle { display: inline-flex; align-items: center; gap: 0.55em; }
+  .handle svg { height: 1.05em; width: 1.05em; }
+
+  .socials {
+    display: flex;
+    gap: clamp(3rem, 8vw, 8rem);
+    align-items: center;
+    justify-content: center;
+    margin-top: 6vh;
+    flex-wrap: wrap;
+  }
+  .social-col { display: flex; flex-direction: column; align-items: center; }
+  .social-label {
+    margin-top: 2.5vh;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55em;
+    font-weight: 700;
+    font-size: clamp(1.2rem, 2.2vw, 1.9rem);
+  }
+  .social-label svg { height: 1em; width: 1em; }
+
+
+  /* cloudflare watermark (every slide, top right) */
+  .cf-mark {
+    position: fixed;
+    top: 3.2vh;
+    right: 3vw;
+    z-index: 20;
+    width: clamp(56px, 5.5vw, 96px);
+    aspect-ratio: 341 / 156;
+    height: auto;
+    color: #fff;
+    pointer-events: none;
+    transition: color 0.6s ease;
+  }
+  .cf-mark.on-light { color: var(--cf-orange); }
+  .cf-mark.off { opacity: 0; }
+
+  /* chrome: progress */
+  .progress {
+    position: fixed;
+    top: 0; left: 0;
+    height: 3px;
+    background: var(--cf-orange);
+    width: 0;
+    z-index: 10;
+    transition: width 0.4s ease;
+  }
+
+  .hint {
+    position: fixed;
+    bottom: 3.2vh;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    font-size: 0.78rem;
+    color: var(--dim-2);
+    opacity: 1;
+    transition: opacity 1s ease;
+    pointer-events: none;
+  }
+  .hint.gone { opacity: 0; }
+</style>
+</head>
+<body>
+
+<!-- official Cloudflare mark (from cloudflare.com icon sprite), tintable via currentColor -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="cf-logo" viewBox="0 0 341 156">
+      <path fill="currentColor" d="M275.125 68.25C311.507 68.25 341 97.9335 341 134.55C341 141.077 340.063 147.385 338.317 153.343C337.848 154.943 336.363 156 334.706 156H243.056C241.697 156 240.76 154.628 241.247 153.351L242.999 148.76C248.595 134.03 264.56 121.963 279.331 121.256L307.33 119.813C308.826 119.736 310 118.492 310 116.985C310 115.485 308.838 114.245 307.351 114.157L281.059 112.601C266.924 111.877 260.018 99.2932 263.82 86.179L268.195 71.0866C268.64 69.5514 269.971 68.4343 271.557 68.3476C272.738 68.2831 273.928 68.25 275.125 68.25Z"/>
+      <path fill="currentColor" d="M184.062 0C222 0 253.868 26.1297 262.882 61.4824C263.26 62.967 263.142 64.5333 262.601 65.9662L255.383 85.0897C249.787 99.8196 235.406 112.593 219.134 112.593L93.7928 114.043C92.2801 114.061 91.063 115.3 91.0625 116.823C91.0625 118.344 92.2776 119.585 93.789 119.605L217.365 121.248C231.531 121.248 238.406 134.556 234.606 147.671L233.011 153.189C232.53 154.855 231.014 156 229.291 156H3.90889C1.98075 156 0.330745 154.574 0.17634 152.64C0.0594555 151.175 0 149.695 0 148.2C0 119.723 21.6617 96.3403 49.306 93.8266C48.7387 91.2419 48.4375 88.5564 48.4375 85.8C48.4375 65.3379 64.919 48.75 85.25 48.75C93.3413 48.75 100.822 51.3789 106.897 55.8321C117.716 23.3806 148.176 0 184.062 0Z"/>
+    </symbol>
+    <symbol id="icon-x" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.657l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+    </symbol>
+    <symbol id="icon-li" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z"/>
+    </symbol>
+    <symbol id="cf-logo-outline" viewBox="-4 -4 349 164">
+      <path fill="none" stroke="currentColor" stroke-width="7" stroke-linejoin="round" d="M275.125 68.25C311.507 68.25 341 97.9335 341 134.55C341 141.077 340.063 147.385 338.317 153.343C337.848 154.943 336.363 156 334.706 156H243.056C241.697 156 240.76 154.628 241.247 153.351L242.999 148.76C248.595 134.03 264.56 121.963 279.331 121.256L307.33 119.813C308.826 119.736 310 118.492 310 116.985C310 115.485 308.838 114.245 307.351 114.157L281.059 112.601C266.924 111.877 260.018 99.2932 263.82 86.179L268.195 71.0866C268.64 69.5514 269.971 68.4343 271.557 68.3476C272.738 68.2831 273.928 68.25 275.125 68.25Z"/>
+      <path fill="none" stroke="currentColor" stroke-width="7" stroke-linejoin="round" d="M184.062 0C222 0 253.868 26.1297 262.882 61.4824C263.26 62.967 263.142 64.5333 262.601 65.9662L255.383 85.0897C249.787 99.8196 235.406 112.593 219.134 112.593L93.7928 114.043C92.2801 114.061 91.063 115.3 91.0625 116.823C91.0625 118.344 92.2776 119.585 93.789 119.605L217.365 121.248C231.531 121.248 238.406 134.556 234.606 147.671L233.011 153.189C232.53 154.855 231.014 156 229.291 156H3.90889C1.98075 156 0.330745 154.574 0.17634 152.64C0.0594555 151.175 0 149.695 0 148.2C0 119.723 21.6617 96.3403 49.306 93.8266C48.7387 91.2419 48.4375 88.5564 48.4375 85.8C48.4375 65.3379 64.919 48.75 85.25 48.75C93.3413 48.75 100.822 51.3789 106.897 55.8321C117.716 23.3806 148.176 0 184.062 0Z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="progress" id="progress"></div>
+<svg class="cf-mark" id="cfMark" aria-hidden="true"><use href="#cf-logo"/></svg>
+<div class="hint" id="hint">← → arrow keys · F fullscreen</div>
+
+<div class="deck" id="deck">
+
+  <!-- ============ 1 · TITLE (split view: content left, photo right) ============ -->
+  <section class="slide title-slide" data-no-mark>
+    <div class="title-bg">
+      <div class="blob blob-1"></div>
+      <div class="blob blob-2"></div>
+      <div class="blob blob-3"></div>
+    </div>
+    <div class="title-dots"></div>
+    <div class="title-content">
+      <svg style="width:clamp(110px,11vw,180px);aspect-ratio:341/156;color:#fff;display:block;margin:0 auto 4vh;" aria-label="Cloudflare"><use href="#cf-logo"/></svg>
+      <h1>Building for the<br>Agent Era</h1>
+      <p class="sub" style="font-weight:600; color:#fff; margin-top:4.5vh;">Mark Dembo</p>
+      <p class="sub" style="margin-top:0.6vh;">Director, Solutions @ Cloudflare</p>
+      <div class="handles">
+        <span class="handle"><svg aria-label="X"><use href="#icon-x"/></svg>@darkmembo</span>
+        <span class="handle"><svg aria-label="LinkedIn"><use href="#icon-li"/></svg>in/mdembo</span>
+      </div>
+    </div>
+    <div class="title-photo">
+      <img src="assets/mark-2.JPG" alt="Mark Dembo">
+    </div>
+  </section>
+
+  <!-- ============ 2 · THE REVEAL (3-step build: logos → personalized software → same infrastructure) ============ -->
+  <section class="slide seq" data-steps="3">
+    <div class="seq-orange"></div>
+    <div class="seq-inner">
+      <div class="logo-row">
+        <span class="logo-item"><img src="assets/openai.svg" alt="OpenAI" style="height:1.7em;"></span>
+        <span class="logo-item"><img src="assets/lovable.png" alt="Lovable">Lovable</span>
+        <span class="logo-item"><img src="assets/base44.png" alt="Base44">Base44</span>
+      </div>
+      <div class="seq-text">
+        <h2 class="r1">They enable<br>personalized software.</h2>
+        <div class="r2">
+          <svg style="width:clamp(110px,11vw,180px);aspect-ratio:349/164;color:#fff;display:block;margin:0 auto 2.5vh;" aria-hidden="true"><use href="#cf-logo-outline"/></svg>
+          <h2>All running on the<br>same infrastructure.</h2>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3 · THE ERA ============ -->
+  <section class="slide dark">
+    <p class="kicker">For decades, every user got the same interface</p>
+    <h1>The age of<br><span class="accent">personalized software</span></h1>
+  </section>
+
+  <!-- ============ 4 · THE SIGNAL ============ -->
+  <section class="slide dark">
+    <p class="kicker">This isn’t a startup experiment anymore</p>
+    <div class="headline-card">
+      <div class="bar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="url">theverge.com/tech/946345</span>
+      </div>
+      <div class="body">
+        <div class="src">THE VERGE</div>
+        <div class="hl">Apple lets Safari users prompt their own browser extensions into existence</div>
+        <div class="sub2">Describe an extension in plain language — and it exists.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 5 · THE PREDICTION (photographable, orange) ============ -->
+  <section class="slide orange">
+    <p class="kicker">Where all software goes</p>
+    <h1>Every app becomes a<br><a class="slide-link" href="https://data.vinyl.example.com" target="_blank" rel="noopener">system of record</a><br>+<br><a class="slide-link" href="https://vinyl.example.com" target="_blank" rel="noopener">an experience you&nbsp;prompt.</a></h1>
+  </section>
+
+  <!-- ============ 6 · THE SPLIT (diagram, 2-step: reveal serif question) ============ -->
+  <section class="slide dark" data-steps="2">
+    <h2 style="font-size:clamp(1.6rem,3.4vw,3rem);">The data is the value.<br>The UI is just <em>my</em> opinion.</h2>
+    <div class="stack">
+      <div class="layer hot">
+        <span class="tag" style="background:#0e0e11;">The UI</span>
+        <div class="t">Process &amp; Experience Layer</div>
+        <div class="d">where workflows, decisions, and interactions live</div>
+      </div>
+      <div class="layer">
+        <span class="tag" style="background:#0e0e11;">The data</span>
+        <div class="t">System of Record</div>
+        <div class="d">Database, API, CRM, ERP</div>
+      </div>
+    </div>
+    <p class="reveal-line">What if it could be yours?</p>
+  </section>
+
+  <!-- ============ 7 · THE INCEPTION SLIDE ============ -->
+  <section class="slide dark">
+    <h1 style="max-width:24ch; font-size:clamp(2.2rem,5vw,4.6rem);">Let’s add personalized software to this app.<br><span class="accent">By prompting it into existence.</span><br>Right now.</h1>
+  </section>
+
+  <!-- ============ 8 · ARCHITECTURE (dead-air insurance diagram) ============ -->
+  <section class="slide dark">
+    <p class="kicker">What the agent is wiring up</p>
+    <div class="diagram">
+      <div class="dbox"><span class="t">User prompt</span></div>
+      <span class="darrow">→</span>
+      <div class="dbox"><span class="t">Agent generates code</span></div>
+      <span class="darrow">→</span>
+      <div class="dbox"><span class="t">Artifacts</span><span class="d">versioned, Git-compatible storage</span></div>
+      <span class="darrow">→</span>
+      <div class="dbox hot"><span class="t">Dynamic Worker</span><span class="d">isolated, per user</span></div>
+      <span class="darrow">→</span>
+      <div class="dbox"><span class="t">Personalized UI</span><span class="d">on a shared data layer</span></div>
+    </div>
+  </section>
+
+  <!-- ============ 9 · QR MOMENT (orange, full screen) ============ -->
+  <section class="slide orange">
+    <h2 style="font-size:clamp(1.8rem,3.6vw,3.2rem);">Prompt your own extension.</h2>
+    <div class="qr-wrap">
+      <img class="qr-img" alt="QR code" src="">
+      <svg class="qr-fallback" viewBox="0 0 29 29" style="display:none;" shape-rendering="crispEdges"></svg>
+    </div>
+    <div class="qr-url qr-url-text"></div>
+    <p class="sub" style="margin-top:2vh; font-weight:600; color:#fff;">Keep it weird. Keep it PG.</p>
+  </section>
+
+  <!-- ============ 10 · WHY THIS IS HARD ============ -->
+  <section class="slide dark">
+    <p class="kicker">The cloud was built for one app serving many users</p>
+    <h1 style="font-size:clamp(2rem,4.6vw,4.2rem);">One app, <span class="accent">millions of users</span><br>↓<br>Millions of apps, <span class="accent">one user each</span></h1>
+  </section>
+
+  <!-- ============ 11 · THE PRIMITIVES (diagram) ============ -->
+  <section class="slide dark">
+    <p class="kicker">Shipped during Agents Week</p>
+    <h2 style="font-size:clamp(1.6rem,3.2vw,2.8rem);">Exactly the primitives<br>personalized software needs</h2>
+    <div class="grid2">
+      <div class="dbox"><span class="t accent">Workers</span><span class="d">compute that scales to zero</span></div>
+      <div class="dbox"><span class="t accent">Durable Object Facets</span><span class="d">isolated state per generated app</span></div>
+      <div class="dbox"><span class="t accent">Artifacts</span><span class="d">versioned storage for agent-written code</span></div>
+      <div class="dbox"><span class="t accent">Sandboxes</span><span class="d">full environments when agents need a computer</span></div>
+    </div>
+  </section>
+
+  <!-- ============ 12 · THESIS RESTATED (photographable, orange) ============ -->
+  <section class="slide orange">
+    <h1 style="font-size:clamp(2.1rem,4.8vw,4.4rem); max-width:26ch;">Offer unlimited customization — or your users will build their own.</h1>
+    <p class="sub" style="font-size:clamp(1.1rem,2vw,1.7rem); font-weight:600; color:#fff;">You’ll be the wrapper around their system of record.</p>
+  </section>
+
+  <!-- ============ 13 · CTA ============ -->
+  <section class="slide dark">
+    <h2>The platform stays live<br>all conference.</h2>
+    <div class="qr-wrap" style="margin-top:4vh;">
+      <img class="qr-img" alt="QR code" src="" style="width:clamp(140px,22vh,210px);height:clamp(140px,22vh,210px);">
+      <svg class="qr-fallback" viewBox="0 0 29 29" style="display:none;width:clamp(140px,22vh,210px);height:clamp(140px,22vh,210px);" shape-rendering="crispEdges"></svg>
+    </div>
+    <div class="qr-url qr-url-text" style="font-size:clamp(1.1rem,2vw,1.6rem);"></div>
+    <div class="links">
+      <span class="link-chip">github.com/&lt;repo&gt;</span>
+      <span class="link-chip">blog.cloudflare.com · Agents Week recap</span>
+      <span class="link-chip">markpauldembo.com</span>
+    </div>
+    <p class="sub" style="margin-top:3vh;">Building a platform like this? <span style="color:#fff;font-weight:600;">Talk to me.</span></p>
+  </section>
+
+  <!-- ============ 14 · SOCIALS ============ -->
+  <section class="slide dark">
+    <h2>Let’s connect.</h2>
+    <div class="socials">
+      <div class="social-col">
+        <div class="qr-wrap" style="margin-top:0;">
+          <img class="qr-linkedin" alt="LinkedIn QR code" src="" style="width:clamp(180px,30vh,300px);height:clamp(180px,30vh,300px);">
+          <svg class="qr-fallback" viewBox="0 0 29 29" style="display:none;width:clamp(180px,30vh,300px);height:clamp(180px,30vh,300px);" shape-rendering="crispEdges"></svg>
+        </div>
+        <div class="social-label"><svg aria-label="LinkedIn"><use href="#icon-li"/></svg>in/mdembo</div>
+      </div>
+      <div class="social-col">
+        <svg style="width:clamp(70px,12vh,120px);height:clamp(70px,12vh,120px);color:#fff;" aria-label="X"><use href="#icon-x"/></svg>
+        <div class="social-label" style="font-size:clamp(1.6rem,3vw,2.6rem);">@darkmembo</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  /* ====== CONFIG ====== */
+  const QR_URL = 'https://vinyl.example.com'; // ← replace with the real short URL
+  const LINKEDIN_URL = 'https://www.linkedin.com/in/mdembo';
+
+  /* ====== QR setup (online image + offline fallback pattern) ====== */
+  const QR_DISPLAY = QR_URL.replace(/^https?:\/\//, '');
+  document.querySelectorAll('.qr-url-text').forEach(el => el.textContent = QR_DISPLAY);
+  function setupQR(img, url) {
+    img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=680x680&margin=0&data=' + encodeURIComponent(url);
+    img.onerror = () => {
+      img.style.display = 'none';
+      const fb = img.parentElement.querySelector('.qr-fallback');
+      fb.style.display = 'block';
+      drawFallbackQR(fb);
+    };
+  }
+  document.querySelectorAll('.qr-img').forEach(img => setupQR(img, QR_URL));
+  document.querySelectorAll('.qr-linkedin').forEach(img => setupQR(img, LINKEDIN_URL));
+  // deterministic placeholder pattern (NOT scannable — paper backup exists anyway)
+  function drawFallbackQR(svg) {
+    let s = 7, cells = [];
+    const finder = (x, y) => {
+      for (let i = 0; i < 7; i++) for (let j = 0; j < 7; j++) {
+        const ring = (i === 0 || i === 6 || j === 0 || j === 6) || (i >= 2 && i <= 4 && j >= 2 && j <= 4);
+        if (ring) cells.push([x + j, y + i]);
+      }
+    };
+    finder(0, 0); finder(22, 0); finder(0, 22);
+    let seed = 42;
+    for (let y = 0; y < 29; y++) for (let x = 0; x < 29; x++) {
+      const inFinder = (x < 8 && y < 8) || (x > 20 && y < 8) || (x < 8 && y > 20);
+      if (inFinder) continue;
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      if (seed % 100 < 46) cells.push([x, y]);
+    }
+    svg.innerHTML = cells.map(([x, y]) => `<rect x="${x}" y="${y}" width="1" height="1" fill="#111"/>`).join('');
+  }
+
+  /* ====== navigation ====== */
+  const slides = [...document.querySelectorAll('.slide')];
+  const progress = document.getElementById('progress');
+  const cfMark = document.getElementById('cfMark');
+  const hint = document.getElementById('hint');
+
+  /* watermark: orange on light backgrounds, white on dark/orange ones */
+  function updateMark() {
+    const s = slides[i];
+    const onLight = s.classList.contains('seq') && (+s.dataset.step || 0) < 2;
+    cfMark.classList.toggle('on-light', onLight);
+    cfMark.classList.toggle('off', 'noMark' in s.dataset);
+  }
+  let i = Math.min(parseInt(location.hash.slice(1)) - 1 || 0, slides.length - 1);
+  if (i < 0) i = 0;
+
+  function show(n) {
+    n = Math.max(0, Math.min(slides.length - 1, n));
+    slides[i].classList.remove('active');
+    i = n;
+    slides[i].classList.add('active');
+    progress.style.width = ((i + 1) / slides.length * 100) + '%';
+    history.replaceState(null, '', '#' + (i + 1));
+    updateMark();
+  }
+  /* fragment steps: slides with data-steps build in place before advancing */
+  function setStep(slide, st) {
+    slide.dataset.step = st;
+    [...slide.classList].forEach(c => { if (/^s\d+$/.test(c)) slide.classList.remove(c); });
+    slide.classList.add('s' + st);
+    updateMark();
+  }
+  slides.forEach(s => { if (s.dataset.steps) setStep(s, 0); });
+
+  function next() {
+    const s = slides[i], max = (+s.dataset.steps || 1) - 1, st = +s.dataset.step || 0;
+    if (st < max) { setStep(s, st + 1); return; }
+    show(i + 1);
+    if (slides[i].dataset.steps) setStep(slides[i], 0);
+  }
+  function prev() {
+    const s = slides[i], st = +s.dataset.step || 0;
+    if (st > 0) { setStep(s, st - 1); return; }
+    show(i - 1);
+    if (slides[i].dataset.steps) setStep(slides[i], (+slides[i].dataset.steps || 1) - 1);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown' || e.key === 'ArrowDown') { e.preventDefault(); next(); dismissHint(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'ArrowUp') { e.preventDefault(); prev(); dismissHint(); }
+    else if (e.key === 'Home') show(0);
+    else if (e.key === 'End') show(slides.length - 1);
+    else if (e.key === 'f' || e.key === 'F') {
+      document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+    }
+  });
+  document.addEventListener('click', e => {
+    if (e.target.closest('a')) return; // links navigate, they don't advance the deck
+    next();
+    dismissHint();
+  });
+
+  // touch swipe
+  let tx = null;
+  document.addEventListener('touchstart', e => tx = e.touches[0].clientX, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (tx === null) return;
+    const dx = e.changedTouches[0].clientX - tx;
+    if (Math.abs(dx) > 40) (dx < 0 ? next() : prev());
+    tx = null;
+  });
+
+  let hintDismissed = false;
+  function dismissHint() {
+    if (!hintDismissed) { hint.classList.add('gone'); hintDismissed = true; }
+  }
+  setTimeout(dismissHint, 6000);
+
+  slides[i].classList.add('active');
+  show(i);
+</script>
+</body>
+</html>
