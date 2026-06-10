@@ -21,8 +21,7 @@ substitute, and keep moving. The audience would rather see something
 imperfect work than watch you stop.
 
 **Models are FIXED — no provider switching, no Anthropic, no
-OpenAI-compatible endpoint, no model menu.** Two Workers AI models, both
-called via `env.AI.run(...)`:
+OpenAI-compatible endpoint, no model menu.** Two Workers AI models:
 
 - **Classification (gatekeeper):** `@cf/zai-org/glm-4.7-flash` — fast,
   cheap, 131K context, structured JSON output + tool calling.
@@ -30,15 +29,30 @@ called via `env.AI.run(...)`:
   agentic model, 262K context, multi-turn tool calling + structured
   outputs.
 
-Both are Cloudflare-hosted and use the OpenAI-style chat schema
-(`messages`, `tools`, `tool_choice`, `response_format`,
-`choices[].message`). The exact call shapes are inlined below in
-§"Inlined platform reference" — do NOT webfetch the model or JSON-mode
-docs. If `env.AI` is unavailable, stop and surface it; do not invent a
+Both are Cloudflare-hosted and reached through the **Vercel AI SDK** via
+`workers-ai-provider` (`createWorkersAI({ binding: env.AI })`) — NOT raw
+`env.AI.run`. The AI SDK runs the tool loop for you (`generateText` +
+`stopWhen`) and the structured-output call (`generateObject`); you do not
+hand-roll a `messages`/`tool_calls` loop. Exact call shapes are inlined
+below in §"Inlined platform reference" — do NOT webfetch the model or AI
+SDK docs. If `env.AI` is unavailable, stop and surface it; do not invent a
 fallback provider.
 
-Concrete decisions already made:
+Concrete decisions already made (these are NOT open choices — do not
+deliberate, do not pick an alternative):
 
+- **Execution model = Cloudflare Agents SDK `Agent` (a Durable Object).**
+  Generation runs for 30–90s+ (several model calls + git push). **NEVER
+  use `ctx.waitUntil` for it** — `waitUntil` is cancelled shortly after
+  the response returns (`waitUntil() tasks did not complete within the
+  allowed time ... and have been cancelled`), which silently strands the
+  extension in `generating` forever. The agent loop MUST run in the
+  Agent's own alarm-driven lifecycle: `POST /submit` does
+  `getAgentByName(env.GENERATION_AGENT, extensionId)` then calls a method
+  that does `this.schedule(0, "runGeneration", job)` and returns
+  immediately. The scheduled callback runs as its own DO invocation with a
+  fresh budget. (No `@callable`/decorators — Worker→Agent is plain DO RPC.
+  Avoiding decorators also sidesteps the TC39-decorator transpile trap.)
 - **Artifacts:** the `ARTIFACTS` binding only *creates and manages repos*
   (`create`, `get`, `createToken`, `fork`, `delete`) — it **cannot read
   or write files** inside them. Commit/read/log are done with
@@ -54,6 +68,38 @@ Concrete decisions already made:
   for cached serving. Both pass `globalOutbound: null` and no
   `bindings`. Do not invent a separate sandbox or evaluator —
   Dynamic Workers is the sandbox. API shapes inlined below.
+
+---
+
+## Move fast — do NOT re-explore (this is a ≤5-min live build)
+
+The last rehearsal wasted minutes on avoidable exploration. Hard rules:
+
+1. **Trust `AGENTS.md` + this prompt's inlined reference.** Skim only the
+   files you will edit (`submit.ts`, `extensions.ts`, `llm.ts`,
+   `artifacts.ts`, the `/submit` page). Do NOT re-read every Phase 1 file
+   to "understand the codebase" — you already have the map.
+2. **NEVER reverse-engineer `node_modules`.** No `ls`/`grep`/`cat` of
+   compiled Kumo chunks, `.d.ts` files, or `@cloudflare/workers-types` to
+   discover an API. The bindings (`Ai`, `Artifacts`, `WorkerLoader`,
+   `DurableObjectNamespace`) are already typed by `@cloudflare/workers-types`
+   and the generated `worker-configuration.d.ts`; import them and, if the
+   compiler fights you on an inlined shape, cast (`as never` / `as Foo`)
+   and move on. A type-only nicety is never worth a spelunking detour.
+3. **Kumo: mirror what Phase 1 already ships.** `src/ui/src` already uses
+   the real Kumo API correctly — `Sidebar`, `Table.*`, `Badge` (variants
+   `success|info|warning|error|neutral`), `Banner`, `Button`, `InputArea`,
+   `Empty`, `ToastProvider`/`useKumoToastManager`, and
+   `CodeHighlighted`/`ShikiProvider` from `@cloudflare/kumo/code` (already
+   wired via `CodePreloader`). Copy those import paths and usage verbatim.
+   `Tabs` is `@cloudflare/kumo/components/tabs` with variants
+   `segmented | underline`. **If a component or variant this prompt names
+   is not already used in Phase 1 and you are unsure of its API, use a
+   plain styled `<div>`/`<table>` instead — never go hunting in the
+   package.** The admin UI is the least demo-critical surface; do not let
+   it eat the clock.
+4. **Write code, then typecheck once at the end** — don't typecheck after
+   every file.
 
 ---
 
@@ -113,28 +159,25 @@ Replace the 501 stub in `src/worker/submit.ts` with:
 1. Validate the body (`{ prompt: string }`, 1–2000 chars).
 2. Insert a row into `submissions` with `status: 'received'`. Generate a
    short `submission_id` (nanoid 10).
-3. Call the gatekeeper classifier (ONE LLM call) via
-   `callLLMJson` (the helper Phase 1 stubbed in `src/worker/llm.ts` —
-   implement its body now: structured-JSON mode, schema validation, one
-   retry on invalid JSON). The classifier model is **fixed**:
-   `@cf/zai-org/glm-4.7-flash`. See the `callLLMJson` implementation
-   inlined in §"Inlined platform reference → Workers AI".
+3. Call the gatekeeper classifier (ONE structured-output call) with the
+   AI SDK's `generateObject` on the **fixed** model
+   `@cf/zai-org/glm-4.7-flash` via `workers-ai-provider`. The AI SDK
+   validates the output against a zod schema for you — no hand-rolled
+   parse/retry, no `env.AI.run`. Full code inlined in §"Inlined platform
+   reference → Workers AI". (The old `callLLMJson` stub in
+   `src/worker/llm.ts` is superseded — delete it or have it wrap
+   `generateObject`.)
 
-   Schema:
+   Schema (as zod):
 
-   ```json
-   {
-     "type": "object",
-     "required": ["allowed", "reason", "title", "category", "risk_flags"],
-     "properties": {
-       "allowed":     { "type": "boolean" },
-       "reason":      { "type": "string", "maxLength": 280 },
-       "title":       { "type": "string", "minLength": 2, "maxLength": 60 },
-       "category":    { "type": "string", "enum": ["visual","feature","redesign","other"] },
-       "risk_flags":  { "type": "array", "items": { "type": "string" } }
-     },
-     "additionalProperties": false
-   }
+   ```ts
+   const ClassifierSchema = z.object({
+     allowed: z.boolean(),
+     reason: z.string().max(280),
+     title: z.string().min(2).max(60),
+     category: z.enum(["visual", "feature", "redesign", "other"]),
+     risk_flags: z.array(z.string()),
+   });
    ```
 
    Classifier system prompt (write to `src/prompts/extension-classifier.md`
@@ -170,24 +213,47 @@ Replace the 501 stub in `src/worker/submit.ts` with:
      category, timestamps.
    - Update the `submissions` row: `status: 'allowed'`,
      `extension_id`.
-   - Kick off the generation agent **asynchronously** via `ctx.waitUntil`
-     (or an Agent Durable Object — see Step 2). Do NOT block the response
-     on generation.
-   - Return `200 { submission_id, extension_id, status: "generating", title }`.
+    - Kick off the generation agent by getting its Agent instance and
+      scheduling the run (see Step 2) — **never `ctx.waitUntil`**:
+      ```ts
+      const agent = await getAgentByName(env.GENERATION_AGENT, extensionId);
+      await agent.startGeneration({ extensionId, prompt, title, classifier });
+      ```
+      `startGeneration` schedules an immediate DO alarm and returns; it
+      does NOT block the response on generation.
+    - Return `200 { submission_id, extension_id, status: "generating", title }`.
 
 The `title` from this one call is the canonical display name used
 everywhere. One call, two jobs.
 
-### Step 2 — Generation agent with tool-use loop (Agents SDK)
+### Step 2 — Generation agent with tool-use loop (Agents SDK + AI SDK)
 
-Implement in `src/worker/agent.ts`. Use the Cloudflare Agents SDK. The
-agent runs in a Durable Object (or via `ctx.waitUntil` for simplicity if
-time is tight — pick one and stick to it). The generator model is
-**fixed**: `@cf/moonshotai/kimi-k2.6`, driven through `env.AI.run` with
-the OpenAI-style `tools` array (see §"Inlined platform reference →
-Workers AI → tool-use loop"). No other model, no provider switching.
+This is the part the last rehearsal got wrong. Do it exactly this way.
 
-The agent has exactly two tools:
+Implement a `GenerationAgent` that **extends the Agents SDK `Agent` base
+class** (`import { Agent } from "agents"`) in `src/worker/agent.ts`. It is
+a Durable Object — register it in `wrangler.jsonc` with a
+`durable_objects` binding named `GENERATION_AGENT` (class
+`GenerationAgent`) and a migration (`new_sqlite_classes: ["GenerationAgent"]`).
+Install deps: `npm i agents ai workers-ai-provider zod`.
+
+- `startGeneration(job)` — a plain method (Worker→Agent uses DO RPC, so
+  **no `@callable` decorator**). It persists the job and calls
+  `this.schedule(0, "runGeneration", job)`, then returns. Scheduling runs
+  the loop in the Agent's own alarm invocation — a fresh budget that does
+  NOT get cancelled like `ctx.waitUntil`.
+- `runGeneration(job)` — the actual loop. Build the model with
+  `createWorkersAI({ binding: this.env.AI })` and run **one**
+  `generateText(...)` call with both tools and `stopWhen: stepCountIs(8)`.
+  **The AI SDK drives the whole tool-use loop for you** — you do NOT write
+  a `messages`/`tool_calls` for-loop, do NOT parse `tool_calls` by hand,
+  do NOT call `env.AI.run` directly. The generator model is **fixed**:
+  `@cf/moonshotai/kimi-k2.6`. On completion, update the extension row to
+  `ready` (if committed) or `failed` (with reason). Full code inlined in
+  §"Inlined platform reference → Workers AI".
+
+The two tools are AI SDK tools (`tool({ description, inputSchema: z…,
+execute })`):
 
 #### Tool A — `test_code`
 
@@ -431,14 +497,23 @@ Required contents of `src/prompts/extension-generator.md`:
    > commentary. The argument value is exactly the contents of
    > `index.js`.
 
-Agent runtime behavior:
+Agent runtime behavior (the AI SDK drives the loop; you enforce budgets
+inside the tools and around the single `generateText` call):
 
-- On `test_code` failure after 4 iterations → mark extension
-  `status: 'failed'`, store `reason: "exceeded iteration budget"` plus
-  the last error list, and stop. The admin view surfaces this.
-- On `commit_and_push_code` success → update the extension row:
-  `status: 'ready'`, `artifact_ref`, `last_commit_sha`,
-  `last_commit_message`, `updated_at`.
+- `stopWhen: stepCountIs(8)` caps the overall step count. Enforce the
+  `test_code` budget by counting calls inside the tool's `execute` (a
+  counter on the Agent instance / closure); after 4 failures return
+  `{ ok:false, errors:["iteration budget exceeded — commit your best attempt"] }`.
+- After `generateText` resolves: if `commit_and_push_code` ran
+  successfully, update the extension row to `status: 'ready'` with
+  `artifact_ref`, `last_commit_sha`, `last_commit_message`, `updated_at`.
+  The `commit_and_push_code` tool's `execute` should perform this DB write
+  itself so success is recorded the moment the commit lands.
+- If the loop ends without a successful commit → mark `status: 'failed'`,
+  store `reason: "exceeded iteration budget"` plus the last error list.
+- Wrap the whole `runGeneration` in try/catch and, on any throw, mark
+  `failed` with the error message — never leave a row stuck in
+  `generating`.
 - All status transitions write to the DB. The frontend learns of them
   via Step 6.
 
@@ -621,8 +696,14 @@ it. Print PASS/FAIL for each check.
     -d '{"prompt":"make the album covers spin slowly"}'`
    returns 200 with `status: "generating"` and a non-empty
    `extension_id`.
-2. Poll `GET /api/v1/extensions/<extension_id>/status` until `ready`
-   (≤ 60s). Print transitions as they happen.
+2. Poll `GET /api/v1/extensions/<extension_id>/status` until `ready`.
+   **Bound each poll command to ~30s** (e.g. 10 × 3s) — do NOT run a
+   single blocking poll loop for minutes (the last run burned ~7 min that
+   way and hit shell timeouts). If still `generating` after one bounded
+   window, run `wrangler tail` **once** to read the agent's logs/errors
+   rather than re-polling blindly; a row stuck in `generating` with no
+   `updated_at` change means the background task died (the classic cause
+   was `ctx.waitUntil` cancellation — which the Agent/DO model fixes).
 3. `curl https://vinyl.not-a-single-bug.com/x/<extension_id>` returns 200, content-type
    `text/html`, body contains the inline persistence-block shim and the
    generated HTML.
@@ -671,8 +752,11 @@ At the `<!-- PHASE_2_APPEND_BELOW -->` marker, add:
 
 - The classifier prompt file path and schema.
 - The generator prompt file path.
-- The chosen agent execution model (Durable Object vs `ctx.waitUntil`)
-  for orchestrating the generator loop.
+- Confirmation that generation runs in the Agents SDK `GenerationAgent`
+  (a Durable Object), kicked off via `getAgentByName` + `this.schedule`,
+  and that the tool loop is the AI SDK's `generateText` (`stopWhen`).
+  Record explicitly that **`ctx.waitUntil` is NOT used** (it gets
+  cancelled) — so the next run never re-litigates this.
 - The chosen real-time mechanism (SSE vs polling).
 - Confirmation that both `test_code` and `/x/:id` use Dynamic Workers
   via `env.LOADER` (this is not a choice; it's the architecture).
@@ -704,101 +788,161 @@ the official docs as of `2026-06-10`. **Do not spend live time fetching
 docs for these APIs.** Only search the docs MCP if something here is
 demonstrably wrong against the installed SDK.
 
-### Workers AI (the two FIXED models)
+### Workers AI via the Agents SDK + AI SDK (the canonical way — copy this)
 
-Both models are Cloudflare-hosted and called via `env.AI.run(modelId, body)`.
-Bodies use the OpenAI chat schema. There is **no** Anthropic, **no**
-OpenAI-compatible endpoint, **no** model menu.
+Two FIXED Cloudflare-hosted models, reached through the **Vercel AI SDK**
+(`ai`) with `workers-ai-provider`. **No raw `env.AI.run`, no hand-rolled
+`messages`/`tool_calls` loop, no Anthropic, no OpenAI-compatible endpoint,
+no model menu.** Deps: `npm i agents ai workers-ai-provider zod`.
 
-| job              | model id                       | notes                                       |
-| ---------------- | ------------------------------ | ------------------------------------------- |
-| classification   | `@cf/zai-org/glm-4.7-flash`    | fast, 131K ctx, JSON output + tool calling  |
-| code gen / agent | `@cf/moonshotai/kimi-k2.6`     | 262K ctx, multi-turn tool calling + JSON    |
+| job              | model id                       | AI SDK call         |
+| ---------------- | ------------------------------ | ------------------- |
+| classification   | `@cf/zai-org/glm-4.7-flash`    | `generateObject`    |
+| code gen / agent | `@cf/moonshotai/kimi-k2.6`     | `generateText` + tools |
 
-`callLLMJson` (implement in `src/worker/llm.ts`) — structured JSON via
-`response_format`, validate, one repair retry:
+The model handle:
 
 ```ts
-// src/worker/llm.ts
-export async function callLLMJson<T>(env: Env, opts: {
-  model: "@cf/zai-org/glm-4.7-flash" | "@cf/moonshotai/kimi-k2.6";
-  system: string;
-  user: string;
-  schema: object;          // JSON Schema for the response
-  validate: (v: unknown) => v is T;
-}): Promise<T> {
-  const messages = [
-    { role: "system", content: opts.system },
-    { role: "user", content: opts.user },
-  ];
-  const body = {
-    messages,
-    response_format: {
-      type: "json_schema",
-      json_schema: { name: "result", strict: true, schema: opts.schema },
-    },
-  };
+import { createWorkersAI } from "workers-ai-provider";
+const workersai = createWorkersAI({ binding: env.AI }); // env.AI = the AI binding
+const model = workersai("@cf/moonshotai/kimi-k2.6");     // or "@cf/zai-org/glm-4.7-flash"
+```
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res: any = await env.AI.run(opts.model, body);
-    // env.AI.run returns the OpenAI-style completion; the JSON is a string
-    // in choices[0].message.content (or res.response on some models).
-    const raw =
-      res?.choices?.[0]?.message?.content ?? res?.response ?? "";
+**Classifier (`src/worker/submit.ts`)** — one structured-output call. The
+AI SDK validates against the zod schema for you; no manual JSON parsing:
+
+```ts
+import { generateObject } from "ai";
+import { createWorkersAI } from "workers-ai-provider";
+import { z } from "zod";
+
+const ClassifierSchema = z.object({
+  allowed: z.boolean(),
+  reason: z.string().max(280),
+  title: z.string().min(2).max(60),
+  category: z.enum(["visual", "feature", "redesign", "other"]),
+  risk_flags: z.array(z.string()),
+});
+
+const workersai = createWorkersAI({ binding: env.AI });
+let classifier;
+try {
+  const { object } = await generateObject({
+    model: workersai("@cf/zai-org/glm-4.7-flash"),
+    schema: ClassifierSchema,
+    system: CLASSIFIER_SYSTEM_PROMPT,   // src/prompts/extension-classifier.md
+    prompt,                              // the audience submission
+  });
+  classifier = object;
+} catch (err) {
+  // classifier unavailable → 503, never skip the gate (see Step 1).
+}
+```
+(If `generateObject` is unsupported by the provider build, fall back to
+`generateText` with the schema described in the system prompt + a
+`ClassifierSchema.parse(JSON.parse(text))`. Do NOT switch providers.)
+
+**Generator agent (`src/worker/agent.ts`)** — the AI SDK runs the entire
+tool-use loop. You define the two tools with `tool()` + zod `inputSchema`
++ `execute`, and the SDK calls them, feeds results back, and re-prompts
+until `stopWhen` or the model stops. No manual loop.
+
+```ts
+import { Agent } from "agents";
+import { generateText, tool, stepCountIs } from "ai";
+import { createWorkersAI } from "workers-ai-provider";
+import { z } from "zod";
+import GENERATOR_SYSTEM_PROMPT from "../prompts/extension-generator.md";
+
+export class GenerationAgent extends Agent<Env> {
+  // Worker→Agent RPC (no @callable needed). Schedules and returns fast.
+  async startGeneration(job: GenerationJob) {
+    await this.schedule(0, "runGeneration", job); // DO alarm; fresh budget
+  }
+
+  async runGeneration(job: GenerationJob) {
+    const { extensionId, prompt, title } = job;
+    const workersai = createWorkersAI({ binding: this.env.AI });
+    let testCalls = 0;
+    let committed = false;
+    let lastErrors: string[] = [];
+
     try {
-      const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
-      if (opts.validate(parsed)) return parsed;
-    } catch { /* fall through to retry */ }
-    // repair: append the bad output and ask for valid JSON only
-    messages.push({ role: "assistant", content: String(raw) });
-    messages.push({ role: "user", content: "That was not valid JSON for the schema. Reply with ONLY the corrected JSON." });
+      await generateText({
+        model: workersai("@cf/moonshotai/kimi-k2.6"),
+        system: GENERATOR_SYSTEM_PROMPT,
+        prompt: `Prompt: ${prompt}\nTitle: ${title}`,
+        stopWhen: stepCountIs(8),       // overall safety cap
+        tools: {
+          test_code: tool({
+            description: "Load the candidate Worker module as a Dynamic Worker and validate it.",
+            inputSchema: z.object({ code: z.string().describe("Full ES module source for index.js") }),
+            execute: async ({ code }) => {
+              if (testCalls >= 4) {
+                return { ok: false, status: 0, html: "", logs: [], errors: ["iteration budget exceeded — commit your best attempt"] };
+              }
+              testCalls++;
+              const r = await testCode(this.env, code); // env.LOADER.load(...) — see Dynamic Workers below
+              lastErrors = r.errors;
+              return r;
+            },
+          }),
+          commit_and_push_code: tool({
+            description: "Commit the validated module to the extension's Artifacts repo and push.",
+            inputSchema: z.object({
+              code: z.string(),
+              readme: z.string(),
+              promptJson: z.any(),
+            }),
+            execute: async ({ code, readme, promptJson }) => {
+              const r = await commitAndPush(this.env, { extensionId, title, code, readme, promptJson });
+              await updateExtension(this.env, extensionId, {
+                status: "ready", reason: null,
+                artifact_ref: r.artifact_ref,
+                last_commit_sha: r.commit_sha,
+                last_commit_message: r.commit_message,
+              });
+              committed = true;
+              return r;
+            },
+          }),
+        },
+      });
+    } catch (e) {
+      // fall through to the failure write below
+      lastErrors = [String((e as Error)?.message ?? e)];
+    }
+
+    if (!committed) {
+      await updateExtension(this.env, extensionId, {
+        status: "failed",
+        reason: ("generation did not commit: " + lastErrors.slice(0, 3).join("; ")).slice(0, 280),
+      });
+    }
   }
-  throw new Error("callLLMJson: model failed to produce valid JSON twice");
 }
 ```
 
-Generator tool-use loop (Kimi K2.6) — OpenAI-style `tools` array. The
-agent loop alternates `env.AI.run` calls and tool execution until the
-model stops requesting tools or the 4-iteration budget is hit:
+Worker side (`src/worker/submit.ts`) kicks it off without blocking:
 
 ```ts
-const tools = [
-  { type: "function", function: {
-      name: "test_code",
-      description: "Load the candidate Worker module as a Dynamic Worker and validate it.",
-      parameters: { type: "object", required: ["code"],
-        properties: { code: { type: "string", description: "Full ES module source for index.js" } },
-        additionalProperties: false } } },
-  { type: "function", function: {
-      name: "commit_and_push_code",
-      description: "Commit the validated module to the extension's Artifacts repo and push.",
-      parameters: { type: "object", required: ["code", "readme", "promptJson"],
-        properties: {
-          code: { type: "string" }, readme: { type: "string" },
-          promptJson: { type: "object" } },
-        additionalProperties: false } } },
-];
-
-let messages = [
-  { role: "system", content: GENERATOR_SYSTEM_PROMPT },  // src/prompts/extension-generator.md
-  { role: "user", content: `Prompt: ${prompt}\nTitle: ${title}` },
-];
-
-for (let i = 0; i < 8; i++) {                 // generous outer cap; test_code budget is 4
-  const res: any = await env.AI.run("@cf/moonshotai/kimi-k2.6", { messages, tools, tool_choice: "auto" });
-  const msg = res.choices[0].message;
-  messages.push(msg);
-  const calls = msg.tool_calls ?? [];
-  if (calls.length === 0) break;              // model is done talking
-  for (const call of calls) {
-    const args = JSON.parse(call.function.arguments);
-    const result = call.function.name === "test_code"
-      ? await test_code(env, args.code)
-      : await commit_and_push_code(env, { extensionId, title, ...args });
-    messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
-  }
-}
+import { getAgentByName } from "agents";
+const agent = await getAgentByName(env.GENERATION_AGENT, extensionId);
+await agent.startGeneration({ extensionId, prompt, title, classifier });
 ```
+
+`wrangler.jsonc` — register the Durable Object + migration:
+
+```jsonc
+"durable_objects": { "bindings": [{ "name": "GENERATION_AGENT", "class_name": "GenerationAgent" }] },
+"migrations": [{ "tag": "v1", "new_sqlite_classes": ["GenerationAgent"] }]
+```
+
+Export the class from the Worker entry (`src/worker/index.ts`):
+`export { GenerationAgent } from "./agent";`. Add
+`GENERATION_AGENT: DurableObjectNamespace` to `Env`. Do **not** add
+`@callable`/`experimentalDecorators` — Worker→Agent is plain DO RPC, so no
+decorators are needed and you avoid the decorator transpile trap.
 
 ### Artifacts + isomorphic-git
 
@@ -1063,10 +1207,18 @@ around — if a URL 404s, search.
 - Workers AI function calling —
   https://developers.cloudflare.com/workers-ai/function-calling/
 - Cloudflare Agents SDK overview — https://developers.cloudflare.com/agents/
-- Agents API reference (`Agent` base class, tools, state) —
+- Agents API reference (`Agent` base class, `getAgentByName`, state) —
   https://developers.cloudflare.com/agents/runtime/agents-api/
-- Agents → Durable Objects requirement —
+- Agents — schedule tasks (`this.schedule`, alarms) —
+  https://developers.cloudflare.com/agents/api-reference/schedule-tasks/
+- Agents — callable methods / Worker→Agent RPC (`getAgentByName`) —
+  https://developers.cloudflare.com/agents/runtime/lifecycle/callable-methods/
+- Agents — configuration (durable_objects binding + migration) —
   https://developers.cloudflare.com/agents/runtime/operations/configuration/
+- AI SDK (`generateText`, `generateObject`, `tool`, `stepCountIs`) —
+  https://ai-sdk.dev/docs/introduction
+- `workers-ai-provider` (`createWorkersAI`) —
+  https://github.com/cloudflare/workers-ai-provider
 - Durable Objects — https://developers.cloudflare.com/durable-objects/
 
 ### Dynamic Workers (the execution primitive — load-bearing)
