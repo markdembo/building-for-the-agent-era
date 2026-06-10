@@ -179,9 +179,10 @@ Extensions have no build step.
 | ----------- | --------------------- | -------------------------------------------------------------------------------------------------- |
 | `assets`    | Workers Static Assets | serves the built React UI                                                                          |
 | `DB`        | D1                    | records, extensions, submissions                                                                   |
-| `AI`        | Workers AI            | LLM calls. **Fixed models, no provider switching:** classifier = `@cf/zai-org/glm-4.7-flash`; generator/agent = `@cf/moonshotai/kimi-k2.6`. Both via `env.AI.run`. No Anthropic, no OpenAI-compatible endpoint. |
+| `AI`        | Workers AI            | LLM calls. **Fixed models, no provider switching:** classifier = `@cf/zai-org/glm-4.7-flash`; generator/agent = `@cf/moonshotai/kimi-k2.6`. Reached via the **AI SDK** (`ai` + `workers-ai-provider` `createWorkersAI({ binding: env.AI })`), not raw `env.AI.run`. No Anthropic, no OpenAI-compatible endpoint. |
 | `ARTIFACTS` | Cloudflare Artifacts  | one Git repo per generated extension (repo lifecycle only — file commit/read via `isomorphic-git`) |
 | `LOADER`    | Dynamic Workers (`worker_loaders`) | executes each extension on demand in an isolated, sandboxed Worker                    |
+| `GENERATION_AGENT` | Durable Object (Agents SDK `Agent`) | runs the generation agent loop. Generation is multi-minute, so it runs in the Agent's own alarm lifecycle (`this.schedule`), **never `ctx.waitUntil`** (which is cancelled after the response). |
 
 Env vars:
 
@@ -190,14 +191,24 @@ Env vars:
   `env.LOADER.load`/`env.LOADER.get`. Pin it so test-time and serve-time
   isolates behave identically.
 
-`wrangler.jsonc` shape for the Dynamic Workers binding (see
-https://developers.cloudflare.com/dynamic-workers/getting-started/):
+`wrangler.jsonc` shapes for the Dynamic Workers binding (see
+https://developers.cloudflare.com/dynamic-workers/getting-started/) and
+the Agents SDK Durable Object (see
+https://developers.cloudflare.com/agents/runtime/operations/configuration/):
 
 ```jsonc
 {
-  "worker_loaders": [{ "binding": "LOADER" }]
+  "worker_loaders": [{ "binding": "LOADER" }],
+  "durable_objects": {
+    "bindings": [{ "name": "GENERATION_AGENT", "class_name": "GenerationAgent" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GenerationAgent"] }]
 }
 ```
+
+Deps for Phase 2: `npm i agents ai workers-ai-provider zod isomorphic-git`.
+Export the agent class from the Worker entry:
+`export { GenerationAgent } from "./agent";`
 
 ---
 
@@ -275,6 +286,18 @@ https://developers.cloudflare.com/dynamic-workers/getting-started/):
 ---
 
 ## 8. Agent tools (Phase 2)
+
+**Execution model (frozen decision):** the generation loop runs inside a
+Cloudflare Agents SDK `Agent` (`GenerationAgent`, a Durable Object), kicked
+off from `POST /submit` via `getAgentByName(env.GENERATION_AGENT, id)` +
+`this.schedule(0, "runGeneration", job)`. The loop itself is a single AI
+SDK `generateText({ model: workersai("@cf/moonshotai/kimi-k2.6"), tools,
+stopWhen: stepCountIs(8) })` call — the SDK drives the tool-use loop; do
+NOT hand-roll a `messages`/`tool_calls` loop and do NOT use `ctx.waitUntil`
+(it is cancelled after the response). The two tools below are AI SDK
+`tool({ description, inputSchema: z…, execute })` definitions. The
+classifier is one `generateObject({ schema })` call on
+`@cf/zai-org/glm-4.7-flash`.
 
 ### `test_code(code: string)`
 

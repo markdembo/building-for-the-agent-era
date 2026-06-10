@@ -210,9 +210,10 @@ Extensions have no build step.
 | ----------- | --------------------- | -------------------------------------------------------------------------------------------------- |
 | `ASSETS`    | Workers Static Assets | serves the built React UI (`src/ui/dist`)                                                          |
 | `DB`        | D1                    | records, extensions, submissions (db_name `vinyl-app-db`, id `888acc88-a896-402b-a510-b76abdda2496`) |
-| `AI`        | Workers AI            | LLM calls. **Fixed models, no provider switching:** classifier = `@cf/zai-org/glm-4.7-flash`; generator/agent = `@cf/moonshotai/kimi-k2.6`. Both via `env.AI.run`. No Anthropic, no OpenAI-compatible endpoint. |
+| `AI`        | Workers AI            | LLM calls. **Fixed models, no provider switching:** classifier = `@cf/zai-org/glm-4.7-flash`; generator/agent = `@cf/moonshotai/kimi-k2.6`. Reached via the **AI SDK** (`ai` + `workers-ai-provider` `createWorkersAI({ binding: env.AI })`), not raw `env.AI.run`. No Anthropic, no OpenAI-compatible endpoint. |
 | `ARTIFACTS` | Cloudflare Artifacts  | one Git repo per generated extension; namespace `vinyl-app`                                        |
 | `LOADER`    | Dynamic Workers (`worker_loaders`) | executes each extension on demand in an isolated, sandboxed Worker                    |
+| `GENERATION_AGENT` | Durable Object (Agents SDK `Agent`, class `GenerationAgent`) | runs the generation agent loop in its own alarm lifecycle (`this.schedule`), **never `ctx.waitUntil`** |
 
 Env vars:
 
@@ -228,10 +229,15 @@ Env vars:
 "worker_loaders": [{ "binding": "LOADER" }],
 "artifacts": [{ "binding": "ARTIFACTS", "namespace": "vinyl-app" }],
 "ai": { "binding": "AI" },
+"durable_objects": { "bindings": [{ "name": "GENERATION_AGENT", "class_name": "GenerationAgent" }] },
+"migrations": [{ "tag": "v1", "new_sqlite_classes": ["GenerationAgent"] }],
 "d1_databases": [
   { "binding": "DB", "database_name": "vinyl-app-db", "database_id": "888acc88-a896-402b-a510-b76abdda2496" }
 ]
 ```
+
+Phase 2 deps: `npm i agents ai workers-ai-provider zod isomorphic-git`.
+Export the agent from the Worker entry: `export { GenerationAgent } from "./agent";`
 
 ---
 
@@ -311,6 +317,16 @@ rely on it being wired.
 
 ## 8. Agent tools (Phase 2)
 
+**Execution model (frozen):** the loop runs in the Agents SDK
+`GenerationAgent` Durable Object, kicked off via
+`getAgentByName(env.GENERATION_AGENT, id)` + `this.schedule(0,
+"runGeneration", job)`. The loop is a single AI SDK `generateText({ model:
+workersai("@cf/moonshotai/kimi-k2.6"), tools, stopWhen: stepCountIs(8) })`
+call — the SDK drives the tool-use loop. **No `ctx.waitUntil`** (cancelled
+after the response) and **no hand-rolled `messages`/`tool_calls` loop**.
+The two tools are AI SDK `tool({ inputSchema: z…, execute })` definitions;
+the classifier is one `generateObject({ schema })` call.
+
 ### `test_code(code: string)`
 
 Loads a candidate Worker module via `env.LOADER.load(...)` and makes a
@@ -363,11 +379,13 @@ the existing repo first so the new commit keeps prior history. There is no
 separate deploy step — `env.LOADER.get` pulls the latest source from
 Artifacts on cache miss.
 
-### `callLLMJson<T>(opts)`
+### Classifier (replaces the `callLLMJson` stub)
 
-Already stubbed in `src/worker/llm.ts`. Phase 2 fills in the actual retry /
-validate / repair loop using Workers AI JSON mode (`response_format`) on
-the fixed classifier model `@cf/zai-org/glm-4.7-flash`. No Anthropic, no
+The classifier is one AI SDK `generateObject({ model:
+workersai("@cf/zai-org/glm-4.7-flash"), schema })` call — the SDK validates
+the output against the zod schema, so the `callLLMJson` stub in
+`src/worker/llm.ts` is superseded (delete it or have it wrap
+`generateObject`). No Workers AI raw `env.AI.run`, no Anthropic, no
 provider switching.
 
 ---
@@ -407,7 +425,7 @@ provider switching.
 | ---------------------------- | ---------- | ---------------------------------------------------------------------------- |
 | `@cloudflare/kumo`           | yes        | `@cloudflare/kumo` v2.5.1 (real package — no substitution needed)            |
 | `ARTIFACTS` binding          | yes        | Real Cloudflare Artifacts binding (closed beta — account has access). `src/worker/artifacts.ts` wraps it with a small interface. `createRepo` is wired; `commitFiles` / `readFile` / `listCommits` are stubs Phase 2 implements via `isomorphic-git` (the binding can't read/write files). |
-| Workers AI binding           | yes        | `env.AI` binding declared; Phase 1 doesn't call it. **Fixed models:** classifier `@cf/zai-org/glm-4.7-flash` + generator `@cf/moonshotai/kimi-k2.6`, both via `env.AI.run` + JSON mode. No Anthropic, no provider switching. |
+| Workers AI binding           | yes        | `env.AI` binding declared; Phase 1 doesn't call it. **Fixed models:** classifier `@cf/zai-org/glm-4.7-flash` + generator `@cf/moonshotai/kimi-k2.6`, reached via the AI SDK (`ai` + `workers-ai-provider`), not raw `env.AI.run`. No Anthropic, no provider switching. |
 | `LOADER` (`worker_loaders`)  | yes        | Real Dynamic Workers binding. Smoke-tested with `env.LOADER.load(...)` returning `ok-from-dynamic-worker`. |
 
 ---
@@ -464,3 +482,105 @@ Use the Cloudflare Docs MCP for current canonical URLs. Starting points:
 ---
 
 <!-- PHASE_2_APPEND_BELOW -->
+
+## Phase 2 — extension system (LIVE)
+
+The dormant extension system is now live. Summary of what was wired and the
+decisions made.
+
+### Classifier (gatekeeper)
+
+- Prompt file: `src/prompts/extension-classifier.md` (loaded as a Text module
+  — see the `rules` entry in `wrangler.jsonc` + `src/worker/text-modules.d.ts`).
+- Model (FIXED): `@cf/zai-org/glm-4.7-flash` via the AI SDK
+  `generateObject({ model: workersai("@cf/zai-org/glm-4.7-flash"), schema })`
+  (`workers-ai-provider`). No raw `env.AI.run`.
+- Schema (zod; the AI SDK validates the output):
+
+  ```json
+  {
+    "type": "object",
+    "required": ["allowed", "reason", "title", "category", "risk_flags"],
+    "properties": {
+      "allowed":    { "type": "boolean" },
+      "reason":     { "type": "string", "maxLength": 280 },
+      "title":      { "type": "string", "minLength": 2, "maxLength": 60 },
+      "category":   { "type": "string", "enum": ["visual","feature","redesign","other"] },
+      "risk_flags": { "type": "array", "items": { "type": "string" } }
+    },
+    "additionalProperties": false
+  }
+  ```
+
+- If the classifier call fails (after the internal retry), `POST /submit`
+  returns **503** with `classifier_unavailable` — the gate is never skipped.
+
+### Generator
+
+- Prompt file: `src/prompts/extension-generator.md` (Text module).
+- Model (FIXED): `@cf/moonshotai/kimi-k2.6` via the AI SDK
+  `generateText({ model: workersai("@cf/moonshotai/kimi-k2.6"), tools,
+  stopWhen: stepCountIs(8) })`. The AI SDK drives the tool-use loop — no
+  hand-rolled `messages`/`tool_calls` loop. Tools (`test_code`,
+  `commit_and_push_code`) are `tool({ inputSchema: z…, execute })`.
+- Loop + tools live in `src/worker/agent.ts`. `test_code` budget = 4
+  iterations (enforced in the tool's `execute`); outer cap =
+  `stepCountIs(8)`. On budget exhaustion → extension `status: 'failed'`
+  with `reason`.
+
+### Agent execution model (FROZEN)
+
+- **Agents SDK `Agent` (a Durable Object), via `this.schedule` — NOT
+  `ctx.waitUntil`.** Generation is multi-minute; `ctx.waitUntil` is
+  cancelled shortly after the response returns and strands the row in
+  `generating`. `POST /submit` registers the extension as `generating`,
+  does `getAgentByName(env.GENERATION_AGENT, extensionId).startGeneration(job)`,
+  and returns immediately. `startGeneration` calls
+  `this.schedule(0, "runGeneration", job)`; the scheduled callback runs the
+  loop in the Agent's own alarm invocation with a fresh budget.
+
+### Real-time mechanism (CHOSEN)
+
+- **Polling (option B)**, for reliability under conference Wi-Fi.
+  - `/admin` polls `GET /api/v1/extensions?all=1` + `GET /api/v1/submissions`
+    every 3s and toasts on newly-`ready` extensions.
+  - `/submit` polls `GET /api/v1/extensions/:id/status` every 2s (90s cap).
+- No SSE stream was added.
+
+### Dynamic Workers (NOT a choice — the architecture)
+
+- Both `test_code` (`env.LOADER.load`) and `/x/:id`
+  (`env.LOADER.get(`${id}@${sha}`, cb)`) use Dynamic Workers with
+  `globalOutbound: null` and **no bindings**. The `/x/:id` response injects
+  the browser storage-blocking shim after `<head>` and layers
+  `EXTENSION_HEADERS` (CSP etc). The admin preview adds a fourth layer:
+  `<iframe sandbox="allow-scripts">`.
+- `test_code` log capture is best-effort (`logs: []`); `ok` is gated on
+  `status === 200` + non-empty HTML body + no thrown/timeout errors. (The
+  Tail-Worker log-capture path was skipped per the prompt's time-tight
+  fallback.)
+
+### Artifacts
+
+- `src/worker/artifacts.ts` uses `isomorphic-git` + `src/worker/memory-fs.ts`
+  over the repo `remote` + a scoped token (the `ARTIFACTS` binding can only
+  create/manage repos + mint tokens). Repo name:
+  `ext-<id>-<slug(title)>`. Files: `index.js`, `README.md`, `prompt.json`.
+
+### New endpoints (Phase 2)
+
+- `POST /api/v1/extensions/submit` → real pipeline.
+- `GET /api/v1/extensions?all=1` → includes rejected (admin).
+- `GET /api/v1/submissions` → all submissions (admin).
+- `GET /api/v1/extensions/:id/code` → `{ html, sha }` (index.js source).
+- `GET /api/v1/extensions/:id/commits` → `{ commits: [{ sha, message, author, timestamp }] }`.
+- `GET /api/v1/extensions/:id/status` now also returns `title`.
+
+### How to debug a failed extension
+
+1. Open `/admin`, find the row, click into `/admin/extensions/:id`.
+2. Read the `reason` (failure message / last errors) on the row, and the
+   **Code** tab (the committed `index.js`) + **Preview** tab (`/x/:id`).
+3. Reproduce by replaying the source through `env.LOADER.load` in a scratch
+   route, or call `test_code` (`src/worker/agent.ts`) directly with the code.
+4. `bash scripts/reset.sh` clears the registry + submissions to start clean.
