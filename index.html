@@ -186,6 +186,10 @@
     letter-spacing: -0.02em;
     max-width: 22ch;
   }
+  /* type scale tiers: h1 = display, h2 = standard, modifiers below */
+  .h-standard { font-size: clamp(2rem, 4.6vw, 4.2rem); }
+  .h-compact { font-size: clamp(1.7rem, 3.4vw, 3.1rem); }
+
   .sub {
     margin-top: 3.5vh;
     font-size: clamp(1rem, 1.7vw, 1.45rem);
@@ -232,7 +236,18 @@
     font-size: clamp(0.95rem, 1.4vw, 1.2rem);
     padding: 0.95em 2.2em;
     border-radius: 999px;
+    text-decoration: none;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
+  a.pill:hover { transform: translateY(-2px); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.22); }
+  .logo-item.white { color: #fff; }
+  .logo-item.white img { filter: brightness(0) invert(1); }
+  .trust-row {
+    gap: clamp(1.4rem, 3vw, 3rem);
+    max-width: 80vw;
+    row-gap: 1.6vh;
+  }
+  .trust-row .logo-item { font-size: clamp(1.1rem, 1.9vw, 1.8rem); }
 
   .logo-row {
     display: flex;
@@ -245,13 +260,22 @@
   .cf-cloud { display: block; margin: 0 auto 2.5vh; }
 
   /* diagrams */
-  .diagram { display: flex; align-items: stretch; justify-content: center; gap: 0; flex-wrap: wrap; margin-top: 5vh; }
+  .diagram {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    flex-wrap: nowrap;
+    gap: 0;
+    margin-top: 5vh;
+    width: 100%;
+    max-width: 1750px;
+  }
   .dbox {
     border: 1.5px solid var(--line);
     border-radius: 16px;
-    padding: clamp(1rem, 2.2vh, 1.6rem) clamp(1rem, 1.8vw, 1.7rem);
-    min-width: clamp(120px, 13vw, 200px);
-    max-width: 240px;
+    padding: clamp(1rem, 2.2vh, 1.6rem) clamp(0.8rem, 1.4vw, 1.7rem);
+    flex: 1 1 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -269,10 +293,10 @@
     padding: 0 clamp(0.4rem, 1vw, 0.9rem);
     font-weight: 400;
   }
-  @media (max-width: 1280px) {
+  @media (max-width: 1100px) {
     .diagram { flex-direction: column; align-items: center; gap: 0.5vh; }
-    .dbox { min-width: min(420px, 70vw); max-width: none; }
-    .darrow { transform: rotate(90deg); padding: 0.1em 0; }
+    .diagram .dbox { flex: 0 0 auto; width: min(420px, 70vw); }
+    .diagram .darrow { transform: rotate(90deg); padding: 0.1em 0; }
   }
 
   .stack { display: flex; flex-direction: column; gap: 1.2vh; margin-top: 5vh; width: min(680px, 80vw); }
@@ -362,7 +386,37 @@
     letter-spacing: -0.01em;
   }
 
-  .links { margin-top: 4vh; display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+  .links { margin-top: 4vh; display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; max-width: 70vw; }
+  .grid-note {
+    margin-top: 2.5vh;
+    font-size: clamp(0.85rem, 1.25vw, 1.1rem);
+    font-weight: 500;
+    color: var(--dim);
+  }
+  .dbox.new { border-color: rgba(246, 130, 31, 0.65); position: relative; padding-right: clamp(3.4rem, 4.4vw, 5rem); }
+  .dbox.new::after {
+    content: 'NEW';
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    right: clamp(0.8rem, 1.4vw, 1.4rem);
+    font-size: clamp(0.55rem, 0.8vw, 0.7rem);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--cf-orange);
+    border: 1px solid rgba(246, 130, 31, 0.55);
+    border-radius: 999px;
+    padding: 0.3em 0.8em;
+  }
+  .link-chip.new { border-color: rgba(246, 130, 31, 0.65); color: rgba(255, 255, 255, 0.9); }
+  .link-chip.new::after {
+    content: 'NEW';
+    margin-left: 0.7em;
+    font-size: 0.62em;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--cf-orange);
+  }
   .link-chip {
     border: 1px solid var(--line);
     border-radius: 999px;
@@ -370,7 +424,9 @@
     color: var(--dim);
     font-size: clamp(0.85rem, 1.2vw, 1.05rem);
     font-weight: 500;
+    text-decoration: none;
   }
+  .orange .link-chip { border-color: rgba(255, 255, 255, 0.45); color: #fff; }
 
   /* ---------- title slide (split view, animated gradient) ---------- */
   .title-slide {
@@ -536,6 +592,9 @@
       <path fill="currentColor" d="M275.125 68.25C311.507 68.25 341 97.9335 341 134.55C341 141.077 340.063 147.385 338.317 153.343C337.848 154.943 336.363 156 334.706 156H243.056C241.697 156 240.76 154.628 241.247 153.351L242.999 148.76C248.595 134.03 264.56 121.963 279.331 121.256L307.33 119.813C308.826 119.736 310 118.492 310 116.985C310 115.485 308.838 114.245 307.351 114.157L281.059 112.601C266.924 111.877 260.018 99.2932 263.82 86.179L268.195 71.0866C268.64 69.5514 269.971 68.4343 271.557 68.3476C272.738 68.2831 273.928 68.25 275.125 68.25Z"/>
       <path fill="currentColor" d="M184.062 0C222 0 253.868 26.1297 262.882 61.4824C263.26 62.967 263.142 64.5333 262.601 65.9662L255.383 85.0897C249.787 99.8196 235.406 112.593 219.134 112.593L93.7928 114.043C92.2801 114.061 91.063 115.3 91.0625 116.823C91.0625 118.344 92.2776 119.585 93.789 119.605L217.365 121.248C231.531 121.248 238.406 134.556 234.606 147.671L233.011 153.189C232.53 154.855 231.014 156 229.291 156H3.90889C1.98075 156 0.330745 154.574 0.17634 152.64C0.0594555 151.175 0 149.695 0 148.2C0 119.723 21.6617 96.3403 49.306 93.8266C48.7387 91.2419 48.4375 88.5564 48.4375 85.8C48.4375 65.3379 64.919 48.75 85.25 48.75C93.3413 48.75 100.822 51.3789 106.897 55.8321C117.716 23.3806 148.176 0 184.062 0Z"/>
     </symbol>
+    <symbol id="icon-web" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-width="1.8" d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0 0c2.5 0 4.5-4 4.5-9S14.5 3 12 3 7.5 7 7.5 12s2 9 4.5 9Zm-8.7-12h17.4M3.3 15h17.4"/>
+    </symbol>
     <symbol id="icon-x" viewBox="0 0 24 24">
       <path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.657l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
     </symbol>
@@ -627,7 +686,7 @@
 
   <!-- ============ 6 · THE SPLIT (diagram, 2-step: reveal serif question) ============ -->
   <section class="slide dark" data-steps="2">
-    <h2 style="font-size:clamp(1.6rem,3.4vw,3rem);">The data is the value.<br>The UI is just <em>my</em> opinion.</h2>
+    <h2 class="h-compact">The data is the value.<br>The UI is just <em>my</em> opinion.</h2>
     <div class="stack">
       <div class="layer hot">
         <span class="tag" style="background:#0e0e11;">The UI</span>
@@ -645,91 +704,78 @@
 
   <!-- ============ 7 · THE INCEPTION SLIDE ============ -->
   <section class="slide dark">
-    <h1 style="max-width:24ch; font-size:clamp(2.2rem,5vw,4.6rem);">Let’s add personalized software to this app.<br><span class="accent">By prompting it into existence.</span><br>Right now.</h1>
+    <h1 class="h-standard" style="max-width:24ch;">Let’s add personalized software to this app.<br><span class="accent">By prompting it into existence.</span><br>Right now.</h1>
   </section>
 
   <!-- ============ 8 · ARCHITECTURE (dead-air insurance diagram) ============ -->
   <section class="slide dark">
-    <p class="kicker">What the agent is wiring up</p>
+    <h2 class="h-compact">What the agent is wiring up</h2>
     <div class="diagram">
-      <div class="dbox"><span class="t">User prompt</span></div>
+      <div class="dbox"><span class="t">User prompt</span><span class="d">one sentence, plain language</span></div>
       <span class="darrow">→</span>
-      <div class="dbox"><span class="t">Agent generates code</span></div>
+      <div class="dbox"><span class="t">Agent writes code</span><span class="d">a real extension, not config</span></div>
       <span class="darrow">→</span>
-      <div class="dbox"><span class="t">Artifacts</span><span class="d">versioned, Git-compatible storage</span></div>
+      <div class="dbox"><span class="t">Stored in Artifacts</span><span class="d">versioned, Git-compatible</span></div>
       <span class="darrow">→</span>
-      <div class="dbox hot"><span class="t">Dynamic Worker</span><span class="d">isolated, per user</span></div>
+      <div class="dbox"><span class="t">Runs as a Dynamic Worker</span><span class="d">one isolate per extension</span></div>
       <span class="darrow">→</span>
-      <div class="dbox"><span class="t">Personalized UI</span><span class="d">on a shared data layer</span></div>
+      <div class="dbox"><span class="t">Personalized experience</span><span class="d">on the shared system of record</span></div>
     </div>
   </section>
 
   <!-- ============ 9 · QR MOMENT (orange, full screen) ============ -->
   <section class="slide orange">
-    <h2 style="font-size:clamp(1.8rem,3.6vw,3.2rem);">Prompt your own extension.</h2>
+    <h2 class="h-compact">Prompt your own extension.</h2>
     <div class="qr-wrap">
       <img class="qr-img" alt="QR code" src="">
       <svg class="qr-fallback" viewBox="0 0 29 29" style="display:none;" shape-rendering="crispEdges"></svg>
     </div>
     <div class="qr-url qr-url-text"></div>
-    <p class="sub" style="margin-top:2vh; font-weight:600; color:#fff;">Keep it weird. Keep it PG.</p>
+    <p class="sub" style="margin-top:2vh; font-weight:600; color:#fff;">Keep it weird. Keep it safe for work.</p>
   </section>
 
   <!-- ============ 10 · WHY THIS IS HARD ============ -->
   <section class="slide dark">
-    <p class="kicker">The cloud was built for one app serving many users</p>
-    <h1 style="font-size:clamp(2rem,4.6vw,4.2rem);">One app, <span class="accent">millions of users</span><br>↓<br>Millions of apps, <span class="accent">one user each</span></h1>
+    <p class="kicker">Hyperscalers were built for one app serving many users</p>
+    <h1 class="h-standard" style="max-width:none;"><span style="white-space:nowrap;">One app, <span class="accent">millions of users</span></span><br>↓<br><span style="white-space:nowrap;">Millions of apps, <span class="accent">one user each</span></span></h1>
   </section>
 
-  <!-- ============ 11 · THE PRIMITIVES (diagram) ============ -->
+  <!-- ============ 11 · THE PRIMITIVES ============ -->
   <section class="slide dark">
-    <p class="kicker">Shipped during Agents Week</p>
-    <h2 style="font-size:clamp(1.6rem,3.2vw,2.8rem);">Exactly the primitives<br>personalized software needs</h2>
+    <h2 class="h-compact">Exactly the primitives<br>the <span class="accent">agent era</span> needs</h2>
     <div class="grid2">
-      <div class="dbox"><span class="t accent">Workers</span><span class="d">compute that scales to zero</span></div>
-      <div class="dbox"><span class="t accent">Durable Object Facets</span><span class="d">isolated state per generated app</span></div>
-      <div class="dbox"><span class="t accent">Artifacts</span><span class="d">versioned storage for agent-written code</span></div>
-      <div class="dbox"><span class="t accent">Sandboxes</span><span class="d">full environments when agents need a computer</span></div>
+      <div class="dbox"><span class="t accent">Workers</span><span class="d">compute</span></div>
+      <div class="dbox"><span class="t accent">KV · R2 · D1 · Durable Objects</span><span class="d">serverless storage</span></div>
+      <div class="dbox new"><span class="t accent">Artifacts</span><span class="d">versioned, Git-compatible code storage</span></div>
+      <div class="dbox new"><span class="t accent">Sandboxes</span><span class="d">a computer for your agent · now GA</span></div>
     </div>
   </section>
 
-  <!-- ============ 12 · THESIS RESTATED (photographable, orange) ============ -->
+  <!-- ============ 12 · THE CLOSE (positive CTA, photographable, orange) ============ -->
   <section class="slide orange">
-    <h1 style="font-size:clamp(2.1rem,4.8vw,4.4rem); max-width:26ch;">Offer unlimited customization — or your users will build their own.</h1>
-    <p class="sub" style="font-size:clamp(1.1rem,2vw,1.7rem); font-weight:600; color:#fff;">You’ll be the wrapper around their system of record.</p>
+    <h1 class="h-standard" style="max-width:22ch;">Choose the platform built for the agent era.</h1>
+    <p class="sub" style="margin-top:5vh; font-weight:600; color:#fff;">Trusted by the teams already building it</p>
+    <div class="logo-row trust-row" style="margin-top:1.2vh;">
+      <span class="logo-item white"><img src="assets/openai.svg" alt="OpenAI" style="height:1.5em;"></span>
+      <span class="logo-item white"><img src="assets/anthropic.svg" alt="Anthropic" style="height:1.15em;">Anthropic</span>
+      <span class="logo-item white"><img src="assets/figma.svg" alt="Figma" style="height:1.5em;">Figma</span>
+      <span class="logo-item white"><img src="assets/ramp.svg" alt="Ramp" style="height:1.05em;"></span>
+      <span class="logo-item white"><img src="assets/discord.svg" alt="Discord" style="height:1.2em;">Discord</span>
+      <span class="logo-item white"><img src="assets/webflow.svg" alt="Webflow" style="height:1.2em;">Webflow</span>
+      <span class="logo-item white"><img src="assets/wix.svg" alt="Wix" style="height:1.15em;"></span>
+    </div>
   </section>
 
-  <!-- ============ 13 · CTA ============ -->
-  <section class="slide dark">
-    <h2>The platform stays live<br>all conference.</h2>
-    <div class="qr-wrap" style="margin-top:4vh;">
-      <img class="qr-img" alt="QR code" src="" style="width:clamp(140px,22vh,210px);height:clamp(140px,22vh,210px);">
-      <svg class="qr-fallback" viewBox="0 0 29 29" style="display:none;width:clamp(140px,22vh,210px);height:clamp(140px,22vh,210px);" shape-rendering="crispEdges"></svg>
+  <!-- ============ 13 · THANKS (merged CTA + socials, orange) ============ -->
+  <section class="slide orange">
+    <h1 class="h-standard">Thanks!</h1>
+    <div class="handles" style="margin-top:4vh;">
+      <span class="handle"><svg aria-label="LinkedIn"><use href="#icon-li"/></svg>in/mdembo</span>
+      <span class="handle"><svg aria-label="X"><use href="#icon-x"/></svg>@darkmembo</span>
+      <span class="handle"><svg aria-label="Website"><use href="#icon-web"/></svg>markpauldembo.com</span>
     </div>
-    <div class="qr-url qr-url-text" style="font-size:clamp(1.1rem,2vw,1.6rem);"></div>
-    <div class="links">
-      <span class="link-chip">github.com/&lt;repo&gt;</span>
-      <span class="link-chip">blog.cloudflare.com · Agents Week recap</span>
-      <span class="link-chip">markpauldembo.com</span>
-    </div>
-    <p class="sub" style="margin-top:3vh;">Building a platform like this? <span style="color:#fff;font-weight:600;">Talk to me.</span></p>
-  </section>
-
-  <!-- ============ 14 · SOCIALS ============ -->
-  <section class="slide dark">
-    <h2>Let’s connect.</h2>
-    <div class="socials">
-      <div class="social-col">
-        <div class="qr-wrap" style="margin-top:0;">
-          <img class="qr-linkedin" alt="LinkedIn QR code" src="" style="width:clamp(180px,30vh,300px);height:clamp(180px,30vh,300px);">
-          <svg class="qr-fallback" viewBox="0 0 29 29" style="display:none;width:clamp(180px,30vh,300px);height:clamp(180px,30vh,300px);" shape-rendering="crispEdges"></svg>
-        </div>
-        <div class="social-label"><svg aria-label="LinkedIn"><use href="#icon-li"/></svg>in/mdembo</div>
-      </div>
-      <div class="social-col">
-        <svg style="width:clamp(70px,12vh,120px);height:clamp(70px,12vh,120px);color:#fff;" aria-label="X"><use href="#icon-x"/></svg>
-        <div class="social-label" style="font-size:clamp(1.6rem,3vw,2.6rem);">@darkmembo</div>
-      </div>
+    <div class="links" style="margin-top:3.5vh;">
+      <a class="link-chip" href="https://github.com/markdembo/building-for-the-agent-era" target="_blank" rel="noopener">github.com/markdembo/building-for-the-agent-era</a>
     </div>
   </section>
 
@@ -737,8 +783,7 @@
 
 <script>
   /* ====== CONFIG ====== */
-  const QR_URL = 'https://vinyl.example.com'; // ← replace with the real short URL
-  const LINKEDIN_URL = 'https://www.linkedin.com/in/mdembo';
+  const QR_URL = 'https://vinyl.not-a-single-bug.com';
 
   /* ====== QR setup (online image + offline fallback pattern) ====== */
   const QR_DISPLAY = QR_URL.replace(/^https?:\/\//, '');
@@ -753,7 +798,6 @@
     };
   }
   document.querySelectorAll('.qr-img').forEach(img => setupQR(img, QR_URL));
-  document.querySelectorAll('.qr-linkedin').forEach(img => setupQR(img, LINKEDIN_URL));
   // deterministic placeholder pattern (NOT scannable — paper backup exists anyway)
   function drawFallbackQR(svg) {
     let s = 7, cells = [];
