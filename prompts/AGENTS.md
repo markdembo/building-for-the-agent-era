@@ -179,8 +179,8 @@ Extensions have no build step.
 | ----------- | --------------------- | -------------------------------------------------------------------------------------------------- |
 | `assets`    | Workers Static Assets | serves the built React UI                                                                          |
 | `DB`        | D1                    | records, extensions, submissions                                                                   |
-| `AI`        | Workers AI            | LLM calls (classifier, generator). Phase 2 may also use Anthropic via secret `ANTHROPIC_API_KEY`.  |
-| `ARTIFACTS` | Cloudflare Artifacts  | one Git repo per generated extension                                                               |
+| `AI`        | Workers AI            | LLM calls. **Fixed models, no provider switching:** classifier = `@cf/zai-org/glm-4.7-flash`; generator/agent = `@cf/moonshotai/kimi-k2.6`. Both via `env.AI.run`. No Anthropic, no OpenAI-compatible endpoint. |
+| `ARTIFACTS` | Cloudflare Artifacts  | one Git repo per generated extension (repo lifecycle only — file commit/read via `isomorphic-git`) |
 | `LOADER`    | Dynamic Workers (`worker_loaders`) | executes each extension on demand in an isolated, sandboxed Worker                    |
 
 Env vars:
@@ -203,7 +203,24 @@ https://developers.cloudflare.com/dynamic-workers/getting-started/):
 
 ## 7. Artifacts integration
 
-- Binding: `ARTIFACTS`.
+- Binding: `ARTIFACTS`. **The binding only creates and manages repos
+  (`create`, `get`, `createToken`, `fork`, `delete`, `list`, `import`);
+  it CANNOT read or write files inside a repo.** File commit/read/log is
+  done with [`isomorphic-git`](https://isomorphic-git.org/) over the repo
+  `remote` + a token, using an in-memory filesystem (`MemoryFS`). Add the
+  dep to the Worker: `npm i isomorphic-git`. Wrap both layers behind
+  `src/worker/artifacts.ts` (`createRepo`, `commitFiles`, `readFile`,
+  `listCommits`). Full inlined code: see the Phase 2 prompt
+  §"Inlined platform reference → Artifacts + isomorphic-git" and
+  https://developers.cloudflare.com/artifacts/examples/isomorphic-git/.
+  - Auth: the token string is `art_v1_<secret>?expires=<unix>`; strip the
+    `?expires=...` suffix and pass the secret as the git Basic-auth
+    password: `onAuth: () => ({ username: "x", password: tokenSecret })`.
+  - Commit/push: build the tree in `MemoryFS`, `git.add`, `git.commit`
+    (returns the SHA), `git.push` to `remote` ref `main`. On retry,
+    `git.clone` (depth 1) first so the new commit keeps prior history.
+  - Read-back / log: `git.clone` (depth 1, singleBranch) then
+    `fs.promises.readFile(...)` / `git.log(...)`.
 - Repo naming: `ext-<extensionId>-<slugified-title>` (slug is
   kebab-case ascii, max 40 chars).
 - Repo structure:
@@ -229,6 +246,9 @@ https://developers.cloudflare.com/dynamic-workers/getting-started/):
 - **Serve path** (cached, used by `/x/:extensionId`):
   ```js
   const worker = env.LOADER.get(`${ext.id}@${ext.last_commit_sha}`, async () => {
+    // artifacts.readFile = clone the repo (depth 1) into MemoryFS via
+    // isomorphic-git, then read index.js. The ARTIFACTS binding cannot
+    // read files directly.
     const code = await artifacts.readFile(ext.artifact_ref, ext.last_commit_sha, "index.js");
     return {
       compatibilityDate: env.LOADER_COMPAT_DATE,
@@ -301,11 +321,13 @@ input: {
 → { artifact_ref: string; commit_sha: string; commit_message: string }
 ```
 
-Creates or reuses the Artifacts repo `ext-<id>-<slug>`, commits the three
-files (`index.js`, `README.md`, `prompt.json`), pushes, and returns the
-new ref. On retry, commits a new revision to the existing repo. There is
-no separate deploy step — `env.LOADER.get` pulls the latest source from
-Artifacts on cache miss.
+Creates or reuses the Artifacts repo `ext-<id>-<slug>` (via the
+`ARTIFACTS` binding), then commits the three files (`index.js`,
+`README.md`, `prompt.json`) and pushes them with `isomorphic-git` over
+the repo `remote` + a write token. Returns the new ref and SHA. On retry,
+clones the existing repo first so the new commit keeps prior history.
+There is no separate deploy step — `env.LOADER.get` pulls the latest
+source from Artifacts on cache miss.
 
 ---
 
@@ -341,8 +363,8 @@ read this before starting and use the same fallbacks.
 | Brief named                  | Available?  | What we used instead                                    |
 | ---------------------------- | ----------- | ------------------------------------------------------- |
 | `@cloudflare/kumo`           | `<yes/no>`  | `<e.g. shadcn/ui + Tailwind + lucide-react>`            |
-| `ARTIFACTS` binding          | `<yes/no>`  | `<e.g. R2-backed shim at src/worker/artifacts.ts>`      |
-| Workers AI binding           | `<yes/no>`  | `<e.g. env.AI.run with @cf/meta/llama-3.3 + JSON mode>` |
+| `ARTIFACTS` binding          | `<yes/no>`  | `<e.g. R2-backed shim at src/worker/artifacts.ts>`. Note: even when available, the binding can't read/write files — commit/read via `isomorphic-git`. |
+| Workers AI models            | `<yes/no>`  | **Fixed, no fallback:** `@cf/zai-org/glm-4.7-flash` (classifier) + `@cf/moonshotai/kimi-k2.6` (generator). If either is unavailable, stop and surface it — do NOT swap providers. |
 | `LOADER` (`worker_loaders`)  | `<yes/no>`  | **No fallback** — Dynamic Workers is load-bearing. If `<no>`, Phase 1 must stop and surface the blocker. |
 
 ---
@@ -367,9 +389,16 @@ URLs. Starting points:
 - Workers AI — https://developers.cloudflare.com/workers-ai/
 - Workers AI bindings — https://developers.cloudflare.com/workers-ai/configuration/bindings/
 - Workers AI JSON mode — https://developers.cloudflare.com/workers-ai/features/json-mode/
-- OpenAI-compatible endpoint —
-  https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/
-- AI Gateway — https://developers.cloudflare.com/ai-gateway/
+- `@cf/moonshotai/kimi-k2.6` (generator) —
+  https://developers.cloudflare.com/workers-ai/models/kimi-k2.6/
+- `@cf/zai-org/glm-4.7-flash` (classifier) —
+  https://developers.cloudflare.com/workers-ai/models/glm-4.7-flash/
+- Workers AI function calling —
+  https://developers.cloudflare.com/workers-ai/function-calling/
+- Artifacts Workers binding —
+  https://developers.cloudflare.com/artifacts/api/workers-binding/
+- Artifacts + isomorphic-git (commit/push from a Worker) —
+  https://developers.cloudflare.com/artifacts/examples/isomorphic-git/
 - Agents SDK — https://developers.cloudflare.com/agents/
 - Agents API — https://developers.cloudflare.com/agents/runtime/agents-api/
 - Durable Objects — https://developers.cloudflare.com/durable-objects/
@@ -411,9 +440,9 @@ URLs. Starting points:
   https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox
 - JSON Schema — https://json-schema.org/
 
-### Third-party (only if used as fallback)
+### Third-party
 
-- Anthropic API — https://docs.claude.com/en/api/overview
+- isomorphic-git — https://isomorphic-git.org/docs/en/alphabetic
 - nanoid — https://github.com/ai/nanoid
 
 If a link 404s, the product has been renamed — search the Cloudflare

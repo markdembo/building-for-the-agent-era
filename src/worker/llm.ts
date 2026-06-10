@@ -3,8 +3,10 @@
 // to think about prompts, not plumbing.
 //
 // Phase 2 implementation should:
-//   - call env.AI.run(...) with JSON mode (or the OpenAI-compatible endpoint
-//     on Workers AI, or the Anthropic API via ANTHROPIC_API_KEY)
+//   - call env.AI.run(...) with JSON mode (response_format json_schema) on the
+//     FIXED classifier model "@cf/zai-org/glm-4.7-flash". No provider
+//     switching, no Anthropic, no OpenAI-compatible endpoint.
+//     (The generator/agent loop uses "@cf/moonshotai/kimi-k2.6".)
 //   - validate against `schema`
 //   - retry up to `maxRetries` times on parse/validation failure,
 //     feeding the validation error back to the model

@@ -475,9 +475,10 @@ only Phase 2 uses. The live demo must never block on provisioning.
 
 - `assets` — Workers Static Assets pointing at the built UI directory.
 - `DB` — D1 database (created, migrated, seeded).
-- `AI` — Workers AI binding. Phase 2 may swap to the Anthropic API; if so
-  the API key is added as a secret named `ANTHROPIC_API_KEY` in Phase 2.
-  Still create the `AI` binding now.
+- `AI` — Workers AI binding. Phase 2 uses FIXED Workers AI models via
+  `env.AI.run` — classifier `@cf/zai-org/glm-4.7-flash`, generator
+  `@cf/moonshotai/kimi-k2.6`. No Anthropic, no provider switching, no
+  secret API key. Just create the `AI` binding now.
 - `ARTIFACTS` — Cloudflare Artifacts binding (Git-compatible code storage).
   Create the binding even though Phase 1 doesn't use it. If the Artifacts
   product requires creating a "container" or "namespace" up front, do that
@@ -691,8 +692,10 @@ docs MCP for the current version of any page.
   https://developers.cloudflare.com/workers-ai/configuration/bindings/
 - Workers AI JSON mode / structured outputs —
   https://developers.cloudflare.com/workers-ai/features/json-mode/
-- Workers AI OpenAI-compatible endpoint —
-  https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/
+- `@cf/moonshotai/kimi-k2.6` (generator) —
+  https://developers.cloudflare.com/workers-ai/models/kimi-k2.6/
+- `@cf/zai-org/glm-4.7-flash` (classifier) —
+  https://developers.cloudflare.com/workers-ai/models/glm-4.7-flash/
 - Environment variables and secrets —
   https://developers.cloudflare.com/workers/configuration/environment-variables/
   and https://developers.cloudflare.com/workers/configuration/secrets/

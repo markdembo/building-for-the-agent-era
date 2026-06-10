@@ -69,7 +69,6 @@ export interface Env {
   LOADER: WorkerLoader;
   APP_ORIGIN: string;
   LOADER_COMPAT_DATE: string;
-  ANTHROPIC_API_KEY?: string;
 }
 
 // Worker Loader API surface (Dynamic Workers). Typed minimally so we can call

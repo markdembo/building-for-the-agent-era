@@ -210,7 +210,7 @@ Extensions have no build step.
 | ----------- | --------------------- | -------------------------------------------------------------------------------------------------- |
 | `ASSETS`    | Workers Static Assets | serves the built React UI (`src/ui/dist`)                                                          |
 | `DB`        | D1                    | records, extensions, submissions (db_name `vinyl-app-db`, id `888acc88-a896-402b-a510-b76abdda2496`) |
-| `AI`        | Workers AI            | LLM calls (classifier, generator). Phase 2 may also use Anthropic via secret `ANTHROPIC_API_KEY`.  |
+| `AI`        | Workers AI            | LLM calls. **Fixed models, no provider switching:** classifier = `@cf/zai-org/glm-4.7-flash`; generator/agent = `@cf/moonshotai/kimi-k2.6`. Both via `env.AI.run`. No Anthropic, no OpenAI-compatible endpoint. |
 | `ARTIFACTS` | Cloudflare Artifacts  | one Git repo per generated extension; namespace `vinyl-app`                                        |
 | `LOADER`    | Dynamic Workers (`worker_loaders`) | executes each extension on demand in an isolated, sandboxed Worker                    |
 
@@ -258,7 +258,14 @@ Env vars:
 - Phase 1 created the binding but does not call it. `src/worker/artifacts.ts`
   exposes `createRepo`, `commitFiles`, `listCommits`, `readFile` —
   `createRepo` is wired to `env.ARTIFACTS.create(name)`; the rest are stubs
-  Phase 2 must implement (commit/push via Git protocol or REST).
+  Phase 2 must implement. **The `ARTIFACTS` binding cannot read/write
+  files — only repo lifecycle + tokens.** Implement `commitFiles` /
+  `readFile` / `listCommits` with `isomorphic-git` (`npm i isomorphic-git`)
+  over the repo `remote` + token, using an in-memory `MemoryFS`. Strip the
+  `?expires=...` suffix from the token and pass the secret as the git
+  Basic-auth password. Full inlined code in the Phase 2 prompt
+  §"Inlined platform reference"; reference:
+  https://developers.cloudflare.com/artifacts/examples/isomorphic-git/
 
 ---
 
@@ -348,17 +355,20 @@ commit_and_push_code(input: {
 }>;
 ```
 
-Creates or reuses the Artifacts repo `ext-<id>-<slug>`, commits the three
-files (`index.js`, `README.md`, `prompt.json`), pushes, and returns the new
-ref. On retry, commits a new revision to the existing repo. There is no
+Creates or reuses the Artifacts repo `ext-<id>-<slug>` (via the `ARTIFACTS`
+binding), then commits the three files (`index.js`, `README.md`,
+`prompt.json`) and pushes them with `isomorphic-git` over the repo `remote`
++ a write token (the binding itself can't write files). On retry, clones
+the existing repo first so the new commit keeps prior history. There is no
 separate deploy step — `env.LOADER.get` pulls the latest source from
 Artifacts on cache miss.
 
 ### `callLLMJson<T>(opts)`
 
 Already stubbed in `src/worker/llm.ts`. Phase 2 fills in the actual retry /
-validate / repair loop (Workers AI JSON mode or Anthropic via
-`ANTHROPIC_API_KEY` secret).
+validate / repair loop using Workers AI JSON mode (`response_format`) on
+the fixed classifier model `@cf/zai-org/glm-4.7-flash`. No Anthropic, no
+provider switching.
 
 ---
 
@@ -396,8 +406,8 @@ validate / repair loop (Workers AI JSON mode or Anthropic via
 | Brief named                  | Available? | What we used                                                                 |
 | ---------------------------- | ---------- | ---------------------------------------------------------------------------- |
 | `@cloudflare/kumo`           | yes        | `@cloudflare/kumo` v2.5.1 (real package — no substitution needed)            |
-| `ARTIFACTS` binding          | yes        | Real Cloudflare Artifacts binding (closed beta — account has access). `src/worker/artifacts.ts` wraps it with a small interface. `createRepo` is wired; `commitFiles` / `readFile` / `listCommits` are stubs Phase 2 implements. |
-| Workers AI binding           | yes        | `env.AI` binding declared; Phase 1 doesn't call it. Phase 2 picks model + JSON mode (or swaps to Anthropic via secret `ANTHROPIC_API_KEY`). |
+| `ARTIFACTS` binding          | yes        | Real Cloudflare Artifacts binding (closed beta — account has access). `src/worker/artifacts.ts` wraps it with a small interface. `createRepo` is wired; `commitFiles` / `readFile` / `listCommits` are stubs Phase 2 implements via `isomorphic-git` (the binding can't read/write files). |
+| Workers AI binding           | yes        | `env.AI` binding declared; Phase 1 doesn't call it. **Fixed models:** classifier `@cf/zai-org/glm-4.7-flash` + generator `@cf/moonshotai/kimi-k2.6`, both via `env.AI.run` + JSON mode. No Anthropic, no provider switching. |
 | `LOADER` (`worker_loaders`)  | yes        | Real Dynamic Workers binding. Smoke-tested with `env.LOADER.load(...)` returning `ok-from-dynamic-worker`. |
 
 ---
@@ -419,6 +429,9 @@ Use the Cloudflare Docs MCP for current canonical URLs. Starting points:
 - Workers AI — https://developers.cloudflare.com/workers-ai/
 - Workers AI bindings — https://developers.cloudflare.com/workers-ai/configuration/bindings/
 - Workers AI JSON mode — https://developers.cloudflare.com/workers-ai/features/json-mode/
+- `@cf/moonshotai/kimi-k2.6` (generator) — https://developers.cloudflare.com/workers-ai/models/kimi-k2.6/
+- `@cf/zai-org/glm-4.7-flash` (classifier) — https://developers.cloudflare.com/workers-ai/models/glm-4.7-flash/
+- Artifacts + isomorphic-git — https://developers.cloudflare.com/artifacts/examples/isomorphic-git/
 - **Dynamic Workers — https://developers.cloudflare.com/dynamic-workers/**
 - Dynamic Workers getting started — https://developers.cloudflare.com/dynamic-workers/getting-started/
 - Dynamic Workers API reference — https://developers.cloudflare.com/dynamic-workers/api-reference/
@@ -443,9 +456,9 @@ Use the Cloudflare Docs MCP for current canonical URLs. Starting points:
 - `iframe` sandbox — https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox
 - JSON Schema — https://json-schema.org/
 
-### Third-party (only if used as fallback)
+### Third-party
 
-- Anthropic API — https://docs.claude.com/en/api/overview
+- isomorphic-git — https://isomorphic-git.org/docs/en/alphabetic
 - nanoid — https://github.com/ai/nanoid
 
 ---
