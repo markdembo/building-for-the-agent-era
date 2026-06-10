@@ -1,0 +1,50 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vinyl-app",
+  "account_id": "22c98cbfd8d562c6939f5e839d3a1ea3",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-06-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "routes": [
+    {
+      "pattern": "vinyl.not-a-single-bug.com",
+      "custom_domain": true
+    }
+  ],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "./src/ui/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/x/*"]
+  },
+  "vars": {
+    "APP_ORIGIN": "https://vinyl.not-a-single-bug.com",
+    "LOADER_COMPAT_DATE": "2026-06-10"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "vinyl-app-db",
+      "database_id": "888acc88-a896-402b-a510-b76abdda2496",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "artifacts": [
+    {
+      "binding": "ARTIFACTS",
+      "namespace": "vinyl-app"
+    }
+  ],
+  "worker_loaders": [
+    {
+      "binding": "LOADER"
+    }
+  ]
+}
