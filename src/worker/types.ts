@@ -113,7 +113,6 @@ export interface Env {
   GENERATION_AGENT: DurableObjectNamespace;
   APP_ORIGIN: string;
   LOADER_COMPAT_DATE: string;
-  ARTIFACTS_BASE: string;
 }
 
 // Worker Loader API surface (Dynamic Workers). Typed minimally so we can call
