@@ -83,6 +83,10 @@ export type GenerationJob = {
   prompt: string;
   title: string;
   classifier: ClassifierResult;
+  // Set when iterating on an already-shipped extension. The agent loads the
+  // current source as context and, on failure, leaves the live version intact.
+  submissionId?: string;
+  isIteration?: boolean;
 };
 
 // The Cloudflare Artifacts binding: repo lifecycle + token minting only. It
@@ -113,6 +117,7 @@ export interface Env {
   GENERATION_AGENT: DurableObjectNamespace;
   APP_ORIGIN: string;
   LOADER_COMPAT_DATE: string;
+  ARTIFACTS_BASE: string;
 }
 
 // Worker Loader API surface (Dynamic Workers). Typed minimally so we can call

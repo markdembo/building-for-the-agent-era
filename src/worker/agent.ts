@@ -11,7 +11,7 @@
 import { Agent } from "agents";
 import GENERATOR_SYSTEM_PROMPT from "../prompts/extension-generator.md";
 import type { Env, GenerationJob } from "./types";
-import { updateExtension } from "./db";
+import { getExtension, updateExtension, updateSubmission } from "./db";
 import { getArtifacts, slugify } from "./artifacts";
 
 const GENERATOR_MODEL = "anthropic/claude-opus-4.8";
@@ -128,7 +128,8 @@ export class GenerationAgent extends Agent<Env> {
   }
 
   async runGeneration(job: GenerationJob): Promise<void> {
-    const { extensionId, prompt, title, classifier } = job;
+    const { extensionId, prompt, title, classifier, submissionId } = job;
+    const isIteration = job.isIteration === true;
     const ai = this.env.AI as unknown as AiRunner;
     let testCalls = 0;
     let committed = false;
@@ -140,11 +141,38 @@ export class GenerationAgent extends Agent<Env> {
       title,
       prompt,
       classifier,
+      iteration: isIteration,
       created_at: new Date().toISOString(),
     };
 
+    // When iterating, load the current shipped source so the model edits the
+    // real thing instead of regenerating from scratch.
+    let baseCode = "";
+    if (isIteration) {
+      try {
+        const row = await getExtension(this.env, extensionId);
+        if (row?.artifact_ref && row.last_commit_sha) {
+          baseCode = await getArtifacts(this.env).readFile(
+            row.artifact_ref,
+            row.last_commit_sha,
+            "index.js"
+          );
+        }
+      } catch (e) {
+        console.error("[agent] failed to load base code", {
+          extensionId,
+          message: (e as Error)?.message,
+        });
+      }
+    }
+
+    const initialContent =
+      isIteration && baseCode
+        ? `You are ITERATING on an existing, already-shipped extension. The same hard rules apply (fully stateless, data only via same-origin /api/v1/*, no imports/build step, no external network, responsive/mobile-first). Preserve everything that already works and apply ONLY the requested change.\n\nExtension title: ${title}\n\nThis is the current live index.js:\n\n\`\`\`js\n${baseCode}\n\`\`\`\n\nRequested change:\n${prompt}\n\nReturn the COMPLETE updated index.js, validate it with test_code, then commit_and_push_code once test_code returns ok:true.`
+        : `Prompt: ${prompt}\nTitle: ${title}`;
+
     const messages: Array<{ role: string; content: unknown }> = [
-      { role: "user", content: `Prompt: ${prompt}\nTitle: ${title}` },
+      { role: "user", content: initialContent },
     ];
 
     try {
@@ -209,8 +237,11 @@ export class GenerationAgent extends Agent<Env> {
               code,
               readme,
               promptJson,
-              message: `feat: ${title}`,
+              message: isIteration ? `iterate: ${title}` : `feat: ${title}`,
             });
+            // The extension now points at the new commit. This is identical for
+            // a first build and an iteration — the live version is the latest
+            // successful commit.
             await updateExtension(this.env, extensionId, {
               status: "ready",
               reason: null,
@@ -248,13 +279,35 @@ export class GenerationAgent extends Agent<Env> {
       diag = `threw ${err?.name ?? ""}: ${err?.message ?? JSON.stringify(e)}`;
     }
 
-    if (!committed) {
-      await updateExtension(this.env, extensionId, {
-        status: "failed",
-        reason: (
-          "no commit | " + diag + " | lastErrors=" + lastErrors.slice(0, 2).join("; ")
-        ).slice(0, 280),
-      });
+    const failureReason = (
+      "no commit | " + diag + " | lastErrors=" + lastErrors.slice(0, 2).join("; ")
+    ).slice(0, 280);
+
+    if (committed) {
+      // Mark the originating submission as the successful outcome (powers the
+      // per-extension iteration history with its check mark).
+      if (submissionId) {
+        await updateSubmission(this.env, submissionId, {
+          status: "ready",
+          reason: null,
+        });
+      }
+    } else {
+      if (submissionId) {
+        await updateSubmission(this.env, submissionId, {
+          status: "failed",
+          reason: failureReason,
+        });
+      }
+      // A failed ITERATION must never take down the live extension — it keeps
+      // pointing at the last successful commit. Only fail the extension row on
+      // an initial build that never produced a working commit.
+      if (!isIteration) {
+        await updateExtension(this.env, extensionId, {
+          status: "failed",
+          reason: failureReason,
+        });
+      }
     }
   }
 }

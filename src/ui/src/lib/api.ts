@@ -77,17 +77,25 @@ export const api = {
     getJson<{ extension: Extension }>(`/api/v1/extensions/${id}`),
   getStatus: (id: string) =>
     getJson<StatusResponse>(`/api/v1/extensions/${id}/status`),
+  getSubmission: (id: string) =>
+    getJson<{ submission: Submission }>(`/api/v1/submissions/${id}`),
+  listExtensionSubmissions: (id: string) =>
+    getJson<{ submissions: Submission[] }>(
+      `/api/v1/extensions/${id}/submissions`
+    ),
+  listPendingExtensions: () =>
+    getJson<{ ids: string[] }>(`/api/v1/extensions/pending`),
   getCode: (id: string) =>
     getJson<{ html: string; sha: string }>(`/api/v1/extensions/${id}/code`),
   getCommits: (id: string) =>
     getJson<{ commits: Commit[] }>(`/api/v1/extensions/${id}/commits`),
   listSubmissions: () =>
     getJson<{ submissions: Submission[] }>(`/api/v1/submissions`),
-  submitPrompt: async (prompt: string) => {
+  submitPrompt: async (prompt: string, extensionId?: string) => {
     const r = await fetch(`/api/v1/extensions/submit`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(extensionId ? { prompt, extensionId } : { prompt }),
     });
     const body = (await r.json().catch(() => ({}))) as {
       error?: string;
@@ -97,6 +105,7 @@ export const api = {
       status?: string;
       title?: string;
       reason?: string;
+      iteration?: boolean;
     };
     return { status: r.status, body };
   },

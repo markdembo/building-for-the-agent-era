@@ -68,13 +68,60 @@ export async function getExtension(
 
 export async function insertSubmission(
   env: Env,
-  row: { id: string; prompt: string; status: string; created_at: string }
+  row: {
+    id: string;
+    prompt: string;
+    status: string;
+    created_at: string;
+    extension_id?: string | null;
+  }
 ): Promise<void> {
   await env.DB.prepare(
-    "INSERT INTO submissions (id, prompt, extension_id, status, reason, created_at) VALUES (?, ?, NULL, ?, NULL, ?)"
+    "INSERT INTO submissions (id, prompt, extension_id, status, reason, created_at) VALUES (?, ?, ?, ?, NULL, ?)"
   )
-    .bind(row.id, row.prompt, row.status, row.created_at)
+    .bind(row.id, row.prompt, row.extension_id ?? null, row.status, row.created_at)
     .run();
+}
+
+export async function getSubmission(
+  env: Env,
+  id: string
+): Promise<SubmissionRow | null> {
+  const row = await env.DB.prepare("SELECT * FROM submissions WHERE id = ?")
+    .bind(id)
+    .first<SubmissionRow>();
+  return row ?? null;
+}
+
+// Iteration history for a single extension, oldest → newest.
+export async function listSubmissionsForExtension(
+  env: Env,
+  extensionId: string
+): Promise<SubmissionRow[]> {
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM submissions WHERE extension_id = ? ORDER BY created_at ASC"
+  )
+    .bind(extensionId)
+    .all<SubmissionRow>();
+  return results ?? [];
+}
+
+// A generation/iteration realistically completes well within this window. A
+// submission still in `received`/`allowed` past it is stale (e.g. legacy rows
+// the old pipeline never finalized) and must NOT be treated as in-flight.
+export const PENDING_WINDOW_MS = 5 * 60 * 1000;
+
+// Extension ids with a genuinely in-flight generation/iteration — a submission
+// still in the pre-commit window AND recent. Used to hide the Edit affordance
+// so concurrent users don't stomp on each other.
+export async function listPendingExtensionIds(env: Env): Promise<string[]> {
+  const cutoff = new Date(Date.now() - PENDING_WINDOW_MS).toISOString();
+  const { results } = await env.DB.prepare(
+    "SELECT DISTINCT extension_id FROM submissions WHERE status IN ('received','allowed') AND extension_id IS NOT NULL AND created_at > ?"
+  )
+    .bind(cutoff)
+    .all<{ extension_id: string }>();
+  return (results ?? []).map((r) => r.extension_id);
 }
 
 export async function updateSubmission(

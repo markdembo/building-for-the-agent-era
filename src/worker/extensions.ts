@@ -69,12 +69,32 @@ export async function handleExtensionRoute(
   });
 
   const inner = await worker.getEntrypoint().fetch(request);
-  return injectShimAndLayer(inner);
+  return injectShimAndLayer(inner, id);
 }
 
-// Read the inner HTML, inject the storage-blocking shim after <head>, and layer
-// on the sandbox headers.
-async function injectShimAndLayer(inner: Response): Promise<Response> {
+// A static "want to make changes?" overlay pinned to the corner of every
+// full-screen extension. It deep-links to the iterate flow on /submit. An
+// inline guard hides it whenever the document is framed (admin preview, the
+// submit-page live preview) so it only appears when viewed standalone.
+function editOverlay(id: string): string {
+  return (
+    `<a id="__ext_edit_overlay" href="/submit?extensionId=${id}" target="_top" ` +
+    `style="position:fixed;right:16px;bottom:16px;z-index:2147483647;display:inline-flex;` +
+    `align-items:center;gap:7px;padding:9px 14px;border-radius:999px;` +
+    `background:rgba(18,18,26,0.82);color:#fff;` +
+    `font:500 13px/1 ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;` +
+    `text-decoration:none;border:1px solid rgba(255,255,255,0.14);` +
+    `box-shadow:0 6px 24px rgba(0,0,0,0.35);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);">` +
+    `<span style="color:#ff6fae;font-size:14px;line-height:1;">&#9829;</span>Want to make changes?</a>` +
+    `<script>(function(){var e=document.getElementById('__ext_edit_overlay');` +
+    `var framed=true;try{framed=window.self!==window.top;}catch(_){framed=true;}` +
+    `if(framed&&e){e.style.display='none';}})();</script>`
+  );
+}
+
+// Read the inner HTML, inject the storage-blocking shim after <head>, add the
+// edit overlay before </body>, and layer on the sandbox headers.
+async function injectShimAndLayer(inner: Response, id?: string): Promise<Response> {
   const contentType = inner.headers.get("content-type") ?? "";
   if (!contentType.includes("text/html")) {
     return layerHeaders(inner);
@@ -86,6 +106,15 @@ async function injectShimAndLayer(inner: Response): Promise<Response> {
     html = html.slice(0, insertAt) + STORAGE_SHIM + html.slice(insertAt);
   } else {
     html = STORAGE_SHIM + html;
+  }
+  if (id) {
+    const overlay = editOverlay(id);
+    const bodyIdx = html.search(/<\/body>/i);
+    if (bodyIdx !== -1) {
+      html = html.slice(0, bodyIdx) + overlay + html.slice(bodyIdx);
+    } else {
+      html = html + overlay;
+    }
   }
   const h = new Headers(inner.headers);
   for (const [k, v] of Object.entries(EXTENSION_HEADERS)) h.set(k, v);

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Table } from "@cloudflare/kumo/components/table";
 import { Empty } from "@cloudflare/kumo/components/empty";
 import { Badge } from "@cloudflare/kumo/components/badge";
-import { PuzzlePieceIcon } from "@phosphor-icons/react";
+import { PuzzlePieceIcon, PencilSimpleIcon } from "@phosphor-icons/react";
 import { api, type Extension } from "../lib/api";
 
 const STATUS_VARIANT: Record<Extension["status"], "success" | "info" | "warning" | "error" | "neutral"> = {
@@ -15,9 +16,27 @@ const STATUS_VARIANT: Record<Extension["status"], "success" | "info" | "warning"
 
 export default function ExtensionsPage() {
   const [extensions, setExtensions] = useState<Extension[] | null>(null);
+  const [pending, setPending] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     api.listExtensions().then((r) => setExtensions(r.extensions)).catch(() => setExtensions([]));
+  }, []);
+
+  // Poll which extensions currently have an in-flight generation so we can hide
+  // the Edit link and avoid concurrent edits from multiple staff at once.
+  useEffect(() => {
+    let active = true;
+    const poll = () =>
+      api
+        .listPendingExtensions()
+        .then((r) => active && setPending(new Set(r.ids)))
+        .catch(() => {});
+    poll();
+    const t = window.setInterval(poll, 3000);
+    return () => {
+      active = false;
+      window.clearInterval(t);
+    };
   }, []);
 
   return (
@@ -45,6 +64,7 @@ export default function ExtensionsPage() {
                 <Table.Head>Title</Table.Head>
                 <Table.Head>Status</Table.Head>
                 <Table.Head>Created</Table.Head>
+                <Table.Head>Edit</Table.Head>
               </Table.Row>
             </Table.Header>
             <Table.Body>
@@ -59,6 +79,20 @@ export default function ExtensionsPage() {
                     <Badge variant={STATUS_VARIANT[e.status]}>{e.status}</Badge>
                   </Table.Cell>
                   <Table.Cell>{new Date(e.created_at).toLocaleString()}</Table.Cell>
+                  <Table.Cell>
+                    {e.status === "ready" && pending.has(e.id) ? (
+                      <span className="text-xs text-kumo-subtle">editing…</span>
+                    ) : e.status === "ready" ? (
+                      <Link
+                        to={`/submit?extensionId=${e.id}`}
+                        className="inline-flex items-center gap-1 text-kumo-link underline"
+                      >
+                        <PencilSimpleIcon size={14} /> Edit
+                      </Link>
+                    ) : (
+                      <span className="text-kumo-subtle">—</span>
+                    )}
+                  </Table.Cell>
                 </Table.Row>
               ))}
             </Table.Body>

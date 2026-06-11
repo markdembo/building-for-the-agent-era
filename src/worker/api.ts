@@ -6,10 +6,13 @@ import {
 import {
   getExtension,
   getRecord,
+  getSubmission,
   listRecords,
   listVisibleExtensions,
   listAllExtensions,
+  listPendingExtensionIds,
   listSubmissions,
+  listSubmissionsForExtension,
 } from "./db";
 import { getArtifacts } from "./artifacts";
 
@@ -61,9 +64,31 @@ export async function handleApi(
     return json({ extensions: rows.map(rowToExtension) });
   }
 
+  // GET /api/v1/extensions/pending → { ids } (extensions with an in-flight
+  // generation/iteration). Declared before the generic :id route below.
+  if (path === "/api/v1/extensions/pending" && request.method === "GET") {
+    const ids = await listPendingExtensionIds(env);
+    return json({ ids });
+  }
+
   // GET /api/v1/submissions (admin)
   if (path === "/api/v1/submissions" && request.method === "GET") {
     const rows = await listSubmissions(env);
+    return json({ submissions: rows });
+  }
+
+  // GET /api/v1/submissions/:id → { submission } (poll an iteration's outcome)
+  const subMatch = path.match(/^\/api\/v1\/submissions\/([^/]+)$/);
+  if (subMatch && request.method === "GET") {
+    const row = await getSubmission(env, subMatch[1]);
+    if (!row) return json({ error: "not_found" }, { status: 404 });
+    return json({ submission: row });
+  }
+
+  // GET /api/v1/extensions/:id/submissions → { submissions } (iteration history)
+  const histMatch = path.match(/^\/api\/v1\/extensions\/([^/]+)\/submissions$/);
+  if (histMatch && request.method === "GET") {
+    const rows = await listSubmissionsForExtension(env, histMatch[1]);
     return json({ submissions: rows });
   }
 
