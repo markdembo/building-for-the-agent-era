@@ -1,10 +1,12 @@
 import { Route, Routes, Link, useLocation, useNavigate } from "react-router-dom";
 import { Sidebar } from "@cloudflare/kumo/components/sidebar";
 import { ToastProvider } from "@cloudflare/kumo/components/toast";
-import { VinylRecordIcon, PuzzlePieceIcon, PaperPlaneTiltIcon } from "@phosphor-icons/react";
+import { VinylRecordIcon, PuzzlePieceIcon, PaperPlaneTiltIcon, GearIcon } from "@phosphor-icons/react";
 import CollectionPage from "./pages/CollectionPage";
 import ExtensionsPage from "./pages/ExtensionsPage";
 import SubmitPage from "./pages/SubmitPage";
+import AdminPage from "./pages/AdminPage";
+import ExtensionDetailPage from "./pages/ExtensionDetailPage";
 import { useEffect, useState } from "react";
 import { api, type Extension } from "./lib/api";
 import { CodePreloader } from "./components/CodePreloader";
@@ -66,6 +68,15 @@ export default function App() {
                       Submit
                     </Sidebar.MenuButton>
                   </Sidebar.MenuItem>
+                  <Sidebar.MenuItem>
+                    <Sidebar.MenuButton
+                      icon={GearIcon}
+                      active={isActive("/admin")}
+                      onClick={() => navigate("/admin")}
+                    >
+                      Admin
+                    </Sidebar.MenuButton>
+                  </Sidebar.MenuItem>
                 </Sidebar.Menu>
               </Sidebar.Group>
             </Sidebar.Content>
@@ -81,6 +92,8 @@ export default function App() {
               <Route path="/" element={<CollectionPage />} />
               <Route path="/extensions" element={<ExtensionsPage />} />
               <Route path="/submit" element={<SubmitPage />} />
+              <Route path="/admin" element={<AdminPage />} />
+              <Route path="/admin/extensions/:id" element={<ExtensionDetailPage />} />
               <Route
                 path="*"
                 element={

@@ -61,12 +61,56 @@ export type ExtensionRow = {
   updated_at: string;
 };
 
+export type SubmissionRow = {
+  id: string;
+  prompt: string;
+  extension_id: string | null;
+  status: string;
+  reason: string | null;
+  created_at: string;
+};
+
+export type ClassifierResult = {
+  allowed: boolean;
+  reason: string;
+  title: string;
+  category: "visual" | "feature" | "redesign" | "other";
+  risk_flags: string[];
+};
+
+export type GenerationJob = {
+  extensionId: string;
+  prompt: string;
+  title: string;
+  classifier: ClassifierResult;
+};
+
+// The Cloudflare Artifacts binding: repo lifecycle + token minting only. It
+// cannot read or write files — that is done with isomorphic-git over `remote`.
+export interface ArtifactsRepoHandle {
+  remote?: string;
+  createToken(
+    scope?: "read" | "write",
+    ttl?: number
+  ): Promise<{ plaintext: string; expiresAt?: number }>;
+}
+export interface ArtifactsBinding {
+  create(
+    name: string,
+    opts?: unknown
+  ): Promise<{ name: string; remote: string; defaultBranch?: string; token: string }>;
+  get(name: string): Promise<ArtifactsRepoHandle>;
+  delete(name: string): Promise<unknown>;
+  list(opts?: unknown): Promise<unknown>;
+}
+
 export interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
   AI: Ai;
-  ARTIFACTS: unknown; // Cloudflare Artifacts binding (closed beta)
+  ARTIFACTS: ArtifactsBinding;
   LOADER: WorkerLoader;
+  GENERATION_AGENT: DurableObjectNamespace;
   APP_ORIGIN: string;
   LOADER_COMPAT_DATE: string;
 }
@@ -89,7 +133,9 @@ export interface WorkerCode {
 }
 
 export interface WorkerStub {
-  getEntrypoint(name?: string): { fetch(req: Request): Promise<Response> };
+  getEntrypoint(name?: string): {
+    fetch(req: Request, init?: RequestInit): Promise<Response>;
+  };
 }
 
 export function rowToRecord(r: RecordRow): RecordDTO {

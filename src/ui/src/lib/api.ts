@@ -30,6 +30,29 @@ export type Extension = {
   updated_at: string;
 };
 
+export type Submission = {
+  id: string;
+  prompt: string;
+  extension_id: string | null;
+  status: string;
+  reason: string | null;
+  created_at: string;
+};
+
+export type Commit = {
+  sha: string;
+  message: string;
+  author: string;
+  timestamp: number;
+};
+
+export type StatusResponse = {
+  id: string;
+  status: Extension["status"];
+  reason: string | null;
+  title?: string;
+};
+
 async function getJson<T>(path: string): Promise<T> {
   const r = await fetch(path, { headers: { accept: "application/json" } });
   if (!r.ok) throw new Error(`${path} → HTTP ${r.status}`);
@@ -46,7 +69,20 @@ export const api = {
     return getJson<{ records: Record[] }>(`/api/v1/records${s ? `?${s}` : ""}`);
   },
   getRecord: (id: number) => getJson<{ record: Record }>(`/api/v1/records/${id}`),
-  listExtensions: () => getJson<{ extensions: Extension[] }>(`/api/v1/extensions`),
+  listExtensions: (all?: boolean) =>
+    getJson<{ extensions: Extension[] }>(
+      `/api/v1/extensions${all ? "?all=1" : ""}`
+    ),
+  getExtension: (id: string) =>
+    getJson<{ extension: Extension }>(`/api/v1/extensions/${id}`),
+  getStatus: (id: string) =>
+    getJson<StatusResponse>(`/api/v1/extensions/${id}/status`),
+  getCode: (id: string) =>
+    getJson<{ html: string; sha: string }>(`/api/v1/extensions/${id}/code`),
+  getCommits: (id: string) =>
+    getJson<{ commits: Commit[] }>(`/api/v1/extensions/${id}/commits`),
+  listSubmissions: () =>
+    getJson<{ submissions: Submission[] }>(`/api/v1/submissions`),
   submitPrompt: async (prompt: string) => {
     const r = await fetch(`/api/v1/extensions/submit`, {
       method: "POST",
