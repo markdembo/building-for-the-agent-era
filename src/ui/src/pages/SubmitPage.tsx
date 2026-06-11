@@ -12,8 +12,13 @@ type Phase =
   | { kind: "rejected"; title?: string; reason?: string }
   | { kind: "generating"; extensionId: string; title?: string }
   | { kind: "ready"; extensionId: string; title?: string }
+  | { kind: "timedout"; extensionId: string; title?: string }
   | { kind: "failed"; title?: string; reason?: string }
   | { kind: "error"; message: string };
+
+// How long to poll before assuming the connection (not the agent) gave up.
+// Conference Wi-Fi is spotty, so this is generous and the user can re-check.
+const POLL_TIMEOUT_MS = 180_000;
 
 // Rotating prompt ideas shown as a typewriter placeholder + quick-fill chips.
 const IDEAS = [
@@ -25,6 +30,35 @@ const IDEAS = [
   "a 'now playing' view with one giant rotating record",
   "group records by genre into colorful stacks",
 ];
+
+// Cloudflare-flavored "we're still working" words, rotated while generating.
+const WORKING_WORDS = [
+  "Spinning up isolates",
+  "Warming the edge",
+  "Summoning Workers",
+  "Propagating to 300+ cities",
+  "Sandboxing your code",
+  "Conjuring Durable Objects",
+  "Routing through the edge",
+  "Committing to Artifacts",
+  "Caching at the edge",
+  "Orange-clouding",
+];
+
+// Cycles through words on an interval while `active`. Returns the current word.
+function useRotating(words: string[], active: boolean, intervalMs = 1800): string {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    setI(0);
+    const id = window.setInterval(
+      () => setI((n) => (n + 1) % words.length),
+      intervalMs
+    );
+    return () => window.clearInterval(id);
+  }, [active, words, intervalMs]);
+  return words[i];
+}
 
 // Typewriter effect: types a phrase, pauses, deletes, moves to the next.
 function useTypewriter(words: string[], active: boolean): string {
@@ -76,6 +110,7 @@ export default function SubmitPage() {
 
   const locked = busy || phase.kind === "generating";
   const typing = useTypewriter(IDEAS, prompt === "" && !locked);
+  const workingWord = useRotating(WORKING_WORDS, phase.kind === "generating");
 
   useEffect(() => {
     return () => {
@@ -87,9 +122,12 @@ export default function SubmitPage() {
     const started = Date.now();
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = window.setInterval(async () => {
-      if (Date.now() - started > 90_000) {
+      if (Date.now() - started > POLL_TIMEOUT_MS) {
+        // We stopped *watching* — but the agent may still be generating.
+        // Surface a recoverable "timed out" state, not a hard failure, so the
+        // user can manually re-check once their connection is back.
         if (pollRef.current) clearInterval(pollRef.current);
-        setPhase({ kind: "failed", title, reason: "Timed out waiting for generation." });
+        setPhase({ kind: "timedout", extensionId, title });
         return;
       }
       try {
@@ -106,6 +144,28 @@ export default function SubmitPage() {
         /* keep polling */
       }
     }, 2000);
+  };
+
+  // Manual re-check after a timeout: do one immediate status fetch, then resume
+  // polling if it's still generating. Only a real server-side "failed"/"rejected"
+  // status flips us into the failed state.
+  const checkAgain = async (extensionId: string, title?: string) => {
+    setPhase({ kind: "generating", extensionId, title });
+    try {
+      const s = await api.getStatus(extensionId);
+      if (s.status === "ready") {
+        setPhase({ kind: "ready", extensionId, title: s.title ?? title });
+        toast.add({ title: "Ready", description: s.title ?? title ?? "", variant: "success" });
+        return;
+      }
+      if (s.status === "failed" || s.status === "rejected") {
+        setPhase({ kind: "failed", title: s.title ?? title, reason: s.reason ?? "Generation failed." });
+        return;
+      }
+    } catch {
+      /* connection still flaky — fall through and resume polling */
+    }
+    startPolling(extensionId, title);
   };
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -216,9 +276,15 @@ export default function SubmitPage() {
             <div className="animate-fade-in-up flex items-center gap-3 rounded-xl border border-violet-400/20 bg-violet-400/5 p-4">
               <Loader />
               <span className="text-sm">
-                Generating your extension{phase.title ? `: “${phase.title}”` : ""}…
+                <span
+                  key={workingWord}
+                  className="inline-block animate-fade-in-up font-medium"
+                >
+                  {workingWord}…
+                </span>
                 <span className="block text-xs text-kumo-subtle">
-                  Writing code, testing it in a sandbox, and committing — usually under a minute.
+                  {phase.title ? `Building “${phase.title}” — ` : ""}writing code,
+                  testing it in a sandbox, and committing. Usually under a minute.
                 </span>
               </span>
             </div>
@@ -242,6 +308,29 @@ export default function SubmitPage() {
                 >
                   Build another
                 </button>
+              </div>
+            </div>
+          )}
+
+          {phase.kind === "timedout" && (
+            <div className="animate-fade-in-up space-y-3">
+              <Banner
+                variant="alert"
+                title="Still working…"
+                description="This is taking longer than usual — likely a spotty connection, not a failure. Your extension may still be generating. Check again in a moment."
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="primary"
+                  onClick={() => checkAgain(phase.extensionId, phase.title)}
+                  className="gap-1.5"
+                >
+                  <SparkleIcon size={16} weight="fill" />
+                  Check again
+                </Button>
+                <Button variant="secondary" onClick={reset}>
+                  Start over
+                </Button>
               </div>
             </div>
           )}
