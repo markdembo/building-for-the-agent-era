@@ -28,6 +28,30 @@ is an HTML document. The HTML, once delivered to the browser, may fetch
    must only call `/api/v1/*` on the same origin. Images returned by the API
    may be third-party URLs — those are fine.
 
+# Responsive design (REQUIRED)
+
+**Most users view extensions on a phone.** A layout that only looks good on a
+desktop is a failure, even if it renders. Design mobile-first and make sure it
+looks great from a ~360px-wide phone up to a wide desktop.
+
+- Always include `<meta name="viewport" content="width=device-width,initial-scale=1" />`.
+- Default to a single, comfortably readable column on narrow screens; add more
+  columns at wider widths via responsive grids (`grid-template-columns:
+  repeat(auto-fill, minmax(...))`) or `@media (min-width: ...)` queries.
+- Never use fixed pixel widths on top-level containers (no `width: 1440px`,
+  `width: 900px`, etc.). Use fluid units — `%`, `fr`, `vw`, `min()`, `max()`,
+  `clamp()` — and cap content with `max-width` + `margin: auto` instead.
+- Images and media must be fluid: `max-width: 100%`, `height: auto` (or
+  `aspect-ratio` + `object-fit: cover`). Never let content overflow horizontally
+  or force the page to scroll sideways.
+- Size text and spacing with relative units (`rem`, `clamp()`); keep tap targets
+  at least ~44px so controls are usable by thumb.
+- Let the layout reflow naturally — `flex-wrap: wrap`, fluid grids — rather than
+  positioning elements at absolute pixel coordinates.
+
+Mentally check your output at a narrow phone width before finishing: if anything
+overflows, is cut off, or requires horizontal scrolling, fix it.
+
 # API shape (FROZEN)
 
 `GET /api/v1/records` → `{ records: Record[] }`. A real, abridged response:
