@@ -8,13 +8,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <style>
-  /* ============================================================
-     CONFIG: set your real short URL here for the QR slides.
-     The QR image is generated via api.qrserver.com (needs internet).
-     If offline, a placeholder pattern is shown — print a paper
-     backup QR as per the stagecraft checklist.
-     ============================================================ */
-
   :root {
     --cf-orange: #f6821f;
     --cf-orange-deep: #f3501e;
@@ -225,6 +218,32 @@
   }
   .slide.s1 .reveal-line { opacity: 1; transform: none; }
   .orange .accent { color: #ffe9a8; }
+
+  /* ---------- long-tail graveyard slide (3-step) ---------- */
+  .gy-headline {
+    opacity: 0;
+    transform: translateY(14px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .graveyard.s1 .gy-headline, .graveyard.s2 .gy-headline { opacity: 1; transform: none; }
+  .gy-chart { width: min(1100px, 78vw, 100vh); margin-top: 4vh; }
+  .gy-chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .gy-chart text { font-family: 'Inter', -apple-system, sans-serif; }
+  .gy-head { fill: var(--cf-orange); opacity: 0.9; }
+  .gy-tail-base { fill: rgba(255, 255, 255, 0.1); }
+  .gy-tail-hot { fill: var(--cf-orange); opacity: 0; transition: opacity 0.8s ease; }
+  .graveyard.s1 .gy-tail-hot, .graveyard.s2 .gy-tail-hot { opacity: 0.9; }
+  .gy-curve { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 2.5; }
+  .gy-axis { stroke: var(--line); stroke-width: 1.5; }
+  .gy-label-dead { transition: opacity 0.5s ease; }
+  .graveyard.s1 .gy-label-dead, .graveyard.s2 .gy-label-dead { opacity: 0; }
+  .gy-label-alive { opacity: 0; transition: opacity 0.5s ease 0.3s; }
+  .graveyard.s1 .gy-label-alive, .graveyard.s2 .gy-label-alive { opacity: 1; }
+  .gy-swarm { pointer-events: none; }
+  .gy-swarm text { font-size: 16.5px; font-weight: 500; fill: rgba(255, 255, 255, 0.68); }
+  .gy-count { fill: rgba(255, 255, 255, 0.6); }
+  .graveyard.s1 .reveal-line { opacity: 0; transform: translateY(16px); }
+  .graveyard.s2 .reveal-line { opacity: 1; transform: none; }
 
   /* ---------- pieces ---------- */
   .pill {
@@ -681,7 +700,7 @@
   <!-- ============ 5 · THE PREDICTION (photographable, orange) ============ -->
   <section class="slide orange">
     <p class="kicker">Where all software goes</p>
-    <h1>Every app becomes a<br><a class="slide-link" href="https://data.vinyl.example.com" target="_blank" rel="noopener">system of record</a><br>+<br><a class="slide-link" href="https://vinyl.example.com" target="_blank" rel="noopener">an experience you&nbsp;prompt.</a></h1>
+    <h1>Every app becomes a<br><a class="slide-link" href="https://vinyl.not-a-single-bug.com/api/v1/records" target="_blank" rel="noopener">system of record</a><br>+<br><a class="slide-link" href="https://vinyl.not-a-single-bug.com/" target="_blank" rel="noopener">an experience you&nbsp;prompt.</a></h1>
   </section>
 
   <!-- ============ 6 · THE SPLIT (diagram, 2-step: reveal serif question) ============ -->
@@ -704,12 +723,23 @@
 
   <!-- ============ 7 · THE INCEPTION SLIDE ============ -->
   <section class="slide dark">
-    <h1 class="h-standard" style="max-width:24ch;">Let’s add personalized software to this app.<br><span class="accent">By prompting it into existence.</span><br>Right now.</h1>
+    <h1 class="h-standard" style="max-width:24ch;">Let’s add personalized software to this app.<br><span class="accent">By prompting it into existence.</span></h1>
+    <p style="font-family:'Instrument Serif',Georgia,serif; font-style:italic; font-size:clamp(1.5rem,2.6vw,2.4rem); color:var(--dim); margin-top:5vh;">(I did. Last night. With one prompt.)</p>
   </section>
 
-  <!-- ============ 8 · ARCHITECTURE (dead-air insurance diagram) ============ -->
+  <!-- ============ 8 · QR MOMENT (orange, full screen) ============ -->
+  <section class="slide orange">
+    <h2 class="h-compact">Prompt your own extension.</h2>
+    <div class="qr-wrap">
+      <img class="qr-img" alt="QR code" src="assets/qr.png">
+    </div>
+    <div class="qr-url">vinyl.not-a-single-bug.com</div>
+    <p class="sub" style="margin-top:2vh; font-weight:600; color:#fff;">Keep it weird. Keep it safe for work.</p>
+  </section>
+
+  <!-- ============ 9 · ARCHITECTURE (the receipts: what one prompt built) ============ -->
   <section class="slide dark">
-    <h2 class="h-compact">What the agent is wiring up</h2>
+    <h2 class="h-compact">What the agent wired up</h2>
     <div class="diagram">
       <div class="dbox"><span class="t">User prompt</span><span class="d">one sentence, plain language</span></div>
       <span class="darrow">→</span>
@@ -721,17 +751,6 @@
       <span class="darrow">→</span>
       <div class="dbox"><span class="t">Personalized experience</span><span class="d">on the shared system of record</span></div>
     </div>
-  </section>
-
-  <!-- ============ 9 · QR MOMENT (orange, full screen) ============ -->
-  <section class="slide orange">
-    <h2 class="h-compact">Prompt your own extension.</h2>
-    <div class="qr-wrap">
-      <img class="qr-img" alt="QR code" src="">
-      <svg class="qr-fallback" viewBox="0 0 29 29" style="display:none;" shape-rendering="crispEdges"></svg>
-    </div>
-    <div class="qr-url qr-url-text"></div>
-    <p class="sub" style="margin-top:2vh; font-weight:600; color:#fff;">Keep it weird. Keep it safe for work.</p>
   </section>
 
   <!-- ============ 10 · WHY THIS IS HARD ============ -->
@@ -751,7 +770,33 @@
     </div>
   </section>
 
-  <!-- ============ 12 · THE CLOSE (positive CTA, photographable, orange) ============ -->
+  <!-- ============ 12 · THE LONG TAIL (graveyard → ignite → bridge, 3-step) ============ -->
+  <section class="slide dark graveyard" data-steps="3">
+    <h2 class="h-compact gy-headline" style="max-width:none;">Every feature request you could never justify —<br>your users will now build it <span class="accent">themselves</span>.</h2>
+    <div class="gy-chart">
+      <svg viewBox="0 0 1040 470" xmlns="http://www.w3.org/2000/svg" aria-label="Power-law curve of feature requests by demand">
+        <path class="gy-head" d="M70,70 C120,75 190,200 256,270 L256,370 L70,370 Z"/>
+        <path class="gy-tail-base" d="M256,270 C420,330 700,352 1000,362 L1000,370 L256,370 Z"/>
+        <path class="gy-tail-hot" d="M256,270 C420,330 700,352 1000,362 L1000,370 L256,370 Z"/>
+        <path class="gy-curve" d="M70,70 C120,75 190,200 256,270 C420,330 700,352 1000,362"/>
+        <line class="gy-axis" x1="70" y1="55" x2="70" y2="370"/>
+        <line class="gy-axis" x1="70" y1="370" x2="1000" y2="370"/>
+        <text x="40" y="215" transform="rotate(-90 40 215)" text-anchor="middle" font-size="18" font-weight="600" letter-spacing="0.08em" fill="rgba(255,255,255,0.38)">users asking for it</text>
+        <text x="535" y="442" text-anchor="middle" font-size="18" font-weight="600" letter-spacing="0.08em" fill="rgba(255,255,255,0.38)">feature requests, ranked by demand</text>
+        <text x="163" y="316" text-anchor="middle" font-size="19" font-weight="700" fill="#16100b">Top 20%</text>
+        <text x="163" y="340" text-anchor="middle" font-size="16" font-weight="600" fill="#16100b">your team builds this</text>
+        <text class="gy-label-dead" x="640" y="232" text-anchor="middle" font-size="23" font-weight="600" fill="rgba(255,255,255,0.45)">The long tail — never gets built</text>
+        <g class="gy-label-alive">
+          <text x="640" y="214" text-anchor="middle" font-size="23" font-weight="700" fill="var(--cf-orange)">extensions · customizations · integrations</text>
+          <text x="640" y="244" text-anchor="middle" font-size="19" font-weight="500" fill="rgba(255,255,255,0.85)">built by your users, with agents<tspan class="gy-count"></tspan></text>
+        </g>
+        <g class="gy-swarm" id="gySwarm"></g>
+      </svg>
+    </div>
+    <p class="reveal-line">What you still need: the infrastructure to power it.</p>
+  </section>
+
+  <!-- ============ 13 · THE CLOSE (positive CTA, photographable, orange) ============ -->
   <section class="slide orange">
     <h1 class="h-standard" style="max-width:22ch;">Choose the platform built for the agent era.</h1>
     <p class="sub" style="margin-top:5vh; font-weight:600; color:#fff;">Trusted by the teams already building it</p>
@@ -766,7 +811,7 @@
     </div>
   </section>
 
-  <!-- ============ 13 · THANKS (merged CTA + socials, orange) ============ -->
+  <!-- ============ 14 · THANKS (merged CTA + socials, orange) ============ -->
   <section class="slide orange">
     <h1 class="h-standard">Thanks!</h1>
     <div class="handles" style="margin-top:4vh;">
@@ -782,42 +827,6 @@
 </div>
 
 <script>
-  /* ====== CONFIG ====== */
-  const QR_URL = 'https://vinyl.not-a-single-bug.com';
-
-  /* ====== QR setup (online image + offline fallback pattern) ====== */
-  const QR_DISPLAY = QR_URL.replace(/^https?:\/\//, '');
-  document.querySelectorAll('.qr-url-text').forEach(el => el.textContent = QR_DISPLAY);
-  function setupQR(img, url) {
-    img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=680x680&margin=0&data=' + encodeURIComponent(url);
-    img.onerror = () => {
-      img.style.display = 'none';
-      const fb = img.parentElement.querySelector('.qr-fallback');
-      fb.style.display = 'block';
-      drawFallbackQR(fb);
-    };
-  }
-  document.querySelectorAll('.qr-img').forEach(img => setupQR(img, QR_URL));
-  // deterministic placeholder pattern (NOT scannable — paper backup exists anyway)
-  function drawFallbackQR(svg) {
-    let s = 7, cells = [];
-    const finder = (x, y) => {
-      for (let i = 0; i < 7; i++) for (let j = 0; j < 7; j++) {
-        const ring = (i === 0 || i === 6 || j === 0 || j === 6) || (i >= 2 && i <= 4 && j >= 2 && j <= 4);
-        if (ring) cells.push([x + j, y + i]);
-      }
-    };
-    finder(0, 0); finder(22, 0); finder(0, 22);
-    let seed = 42;
-    for (let y = 0; y < 29; y++) for (let x = 0; x < 29; x++) {
-      const inFinder = (x < 8 && y < 8) || (x > 20 && y < 8) || (x < 8 && y > 20);
-      if (inFinder) continue;
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      if (seed % 100 < 46) cells.push([x, y]);
-    }
-    svg.innerHTML = cells.map(([x, y]) => `<rect x="${x}" y="${y}" width="1" height="1" fill="#111"/>`).join('');
-  }
-
   /* ====== navigation ====== */
   const slides = [...document.querySelectorAll('.slide')];
   const progress = document.getElementById('progress');
@@ -842,7 +851,58 @@
     progress.style.width = ((i + 1) / slides.length * 100) + '%';
     history.replaceState(null, '', '#' + (i + 1));
     updateMark();
+    if (slides[i].classList.contains('graveyard')) refreshGraveyardData();
   }
+
+  /* long-tail slide: flood the ignited tail with everything the audience
+     actually built — all titles cycle through as a rising swarm.
+     Falls back to pre-seeded labels if offline or the API is down. */
+  const gySlide = document.querySelector('.graveyard');
+  const gySwarm = document.getElementById('gySwarm');
+  let gyTitles = ['Windows 95 skin', 'sort by mood', 'covers that spin', 'dark mode, always',
+    'export to CSV', 'vinyl crackle sounds', 'genre heatmap', 'random album button',
+    'sort by BPM', 'shelf by color', 'lyrics overlay', 'share my shelf'];
+  let gyIdx = 0;
+  function refreshGraveyardData() {
+    fetch('https://vinyl.not-a-single-bug.com/api/v1/extensions')
+      .then(r => r.json())
+      .then(data => {
+        const titles = (data.extensions || [])
+          .map(e => e.title)
+          .filter(Boolean)
+          .map(t => t.length > 24 ? t.slice(0, 23).trimEnd() + '…' : t);
+        if (!titles.length) return;
+        gyTitles = titles.sort(() => Math.random() - 0.5);
+        gyIdx = 0;
+        document.querySelector('.gy-count').textContent = ' · ' + titles.length + ' so far';
+      })
+      .catch(() => {});
+  }
+  /* random point on the tail bezier: (256,270) (420,330) (700,352) (1000,362) */
+  function gyTailPoint() {
+    const t = 0.18 + Math.random() * 0.78, u = 1 - t;
+    return {
+      x: u*u*u*256 + 3*u*u*t*420 + 3*u*t*t*700 + t*t*t*1000,
+      y: u*u*u*270 + 3*u*u*t*330 + 3*u*t*t*352 + t*t*t*362
+    };
+  }
+  setInterval(() => {
+    if (!gySlide.classList.contains('active') || (+gySlide.dataset.step || 0) < 1) return;
+    if (gySwarm.childNodes.length > 30) return; // throttled-tab safety: don't pile up
+    const { x, y } = gyTailPoint();
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    el.setAttribute('x', Math.min(x, 960));
+    el.setAttribute('y', y - 14 - Math.random() * 26);
+    el.setAttribute('text-anchor', 'middle');
+    el.style.opacity = 0;
+    el.textContent = gyTitles[gyIdx++ % gyTitles.length];
+    gySwarm.appendChild(el);
+    el.animate([
+      { opacity: 0, transform: 'translateY(10px)' },
+      { opacity: 0.85, transform: 'translateY(-10px)', offset: 0.35 },
+      { opacity: 0, transform: 'translateY(-36px)' }
+    ], { duration: 3800, easing: 'ease-out' }).onfinish = () => el.remove();
+  }, 260);
   /* fragment steps: slides with data-steps build in place before advancing */
   function setStep(slide, st) {
     slide.dataset.step = st;
